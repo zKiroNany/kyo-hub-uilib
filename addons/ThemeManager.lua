@@ -79,7 +79,7 @@ local ThemeManager = {
         --// Kyo: Sea Hub palette as the Default theme
         ["Default"] = {
             1,
-            { FontColor = "ffffff", MainColor = "331a47", AccentColor = "a4ff8e", BackgroundColor = "170f1c", OutlineColor = "4b316b", BackgroundImage = BackgroundBaseURL .. "default.jpg", AccentColor2 = "bc7df4", AccentGradient = true, FontFace = "ArimoBold", HeaderFont = "GothamBlack" },
+            { FontColor = "ffffff", MainColor = "331a47", AccentColor = "a4ff8e", BackgroundColor = "170f1c", OutlineColor = "4b316b", BackgroundImage = BackgroundBaseURL .. "default.jpg", AccentColor2 = "bc7df4", AccentGradient = true, FontFace = "ArimoBold", HeaderFont = "Bungee" },
         },
         --// Kyo: same colors as Default with the mint to purple wave
         ["Mint Purple"] = {
@@ -1011,7 +1011,7 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
     Themesbox:AddDropdown("HeaderFont", {
         Text = "Header Font (Bold)",
         Favorites = "Fonts",
-        Default = "GothamBlack",
+        Default = "Bungee",
 
         Values = table.clone(FontNames),
         Searchable = true,

@@ -7,7 +7,7 @@ Base snapshot: upstream `bdaa9b8` (first commit of this repo).
 
 ## Skin patches (Sea Hub look)
 
-- `Library.Scheme` defaults match the Default theme: dark purple (`170f1c` background, `331a47` main, `4b316b` outline), mint accent `a4ff8e` with a `bc7df4` gradient, white text, ArimoBold body font, GothamBlack headers.
+- `Library.Scheme` defaults match the Default theme: dark purple (`170f1c` background, `331a47` main, `4b316b` outline), mint accent `a4ff8e` with a `bc7df4` gradient, white text, ArimoBold body font, GothamBlack headers (the Default theme itself uses Bungee for headers, downloaded on first load, GothamBlack is the fallback until it arrives).
 - Buttons and sub buttons: accent fill (0.1 transparency, 0 on hover), white label, outline stroke only when disabled.
 - Sliders (non compact): thin 8px bar, value at the right of the title row. Compact sliders keep the Obsidian look.
 - `Library:SetRainbowAccent(Enabled, Speed)`: cycles `AccentColor` at 30 fps through the registry, disconnected by `Unload`. Restores the previous accent when turned off.
