@@ -349,7 +349,7 @@ local function BuildCurrentThemeData(): {[string]: any}
         BackgroundImage = Library.Options.BackgroundImage.Value,
         HeaderFont = Library.Options.HeaderFont.Value, --// Kyo
         AccentColor2 = Library.Options.AccentColor2.Value:ToHex(),
-        AccentGradient = Library.Options.AccentGradient.Value,
+        AccentGradient = Library.Toggles.AccentGradient.Value, --// toggles live in Library.Toggles
     }
 
     for _, SchemeIndex in SchemeIndexes do
@@ -693,7 +693,7 @@ function ThemeManager:ApplyThemeData(ThemeData: any): (boolean, string?)
             continue
         end
 
-        local Element = Library.Options[Index]
+        local Element = Library.Options[Index] or Library.Toggles[Index]
         local FinalValue = Value
 
         if Index == "FontFace" then
@@ -883,7 +883,7 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
         Text = "Font Face",
         Default = "GothamMedium",
 
-        Values = FontNames,
+        Values = table.clone(FontNames),
         Searchable = true,
         AllowNull = false,
         Multi = false
@@ -892,7 +892,7 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
         Text = "Header Font (Bold)",
         Default = "GothamBold",
 
-        Values = FontNames,
+        Values = table.clone(FontNames),
         Searchable = true,
         AllowNull = false,
         Multi = false
@@ -1214,7 +1214,7 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
     FontFace:OnChanged(function(Value) ThemeManager.Library:SetFont(Enum.Font[Value]) end)
     ThemeManager.Library.Options.HeaderFont:OnChanged(function(Value) ThemeManager.Library:SetHeaderFont(Enum.Font[Value]) end)
     ThemeManager.Library.Options.AccentColor2:OnChanged(function(Value) ThemeManager.Library:SetGradient(nil, Value) end)
-    ThemeManager.Library.Options.AccentGradient:OnChanged(function(Value) ThemeManager.Library:SetGradient(Value) end)
+    ThemeManager.Library.Toggles.AccentGradient:OnChanged(function(Value) ThemeManager.Library:SetGradient(Value) end)
     BackgroundImage:OnChanged(function(Value) ThemeManager.Library:SetBackgroundImage(Value) end)
 
     --// Load default

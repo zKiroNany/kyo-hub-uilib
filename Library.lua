@@ -1078,6 +1078,17 @@ local function RegisterPopOutClone(Source: Instance, Clone: Instance)
             Library.Registry[Clone] = CloneProps
         end
 
+        --// Kyo: keep gradients alive on pop out clones
+        local SourceTarget = Library.GradientTargets and Library.GradientTargets[Source]
+        local CloneGradient = Clone:FindFirstChild("KyoGradient")
+        if SourceTarget and CloneGradient and CloneGradient:IsA("UIGradient") then
+            Library.GradientTargets[Clone] = {
+                Gradient = CloneGradient,
+                Property = SourceTarget.Property,
+                Key = SourceTarget.Key,
+            }
+        end
+
         local FontLabel = Clone:FindFirstChild("__IconFont")
         if FontLabel and FontLabel:IsA("TextLabel") and SourceProps.ImageColor3 then
             Library.Registry[FontLabel] = { TextColor3 = SourceProps.ImageColor3 }
@@ -1513,6 +1524,7 @@ Library.Gradient = {
     Color2 = Color3.fromRGB(236, 72, 153),
 }
 local GradientTargets = setmetatable({}, { __mode = "k" })
+Library.GradientTargets = GradientTargets
 
 local function GradientWhite()
     return Color3.new(1, 1, 1)
@@ -6953,7 +6965,7 @@ do
                 Visible = Button.Visible,
                 Parent = Holder,
             })
-            Library:AddGradient(Base, "BackgroundColor3", 0)
+            Library:AddGradient(Base, "BackgroundColor3", 90) --// top to bottom
 
             local Stroke = New("UIStroke", {
                 Color = "OutlineColor",
