@@ -149,9 +149,50 @@ do
             return true, nil
         end
 
-        local success, errorMessage = pcall(function()
-            writefile(AssetData.Path, game:HttpGet(AssetData.URL))
-        end)
+        --// Kyo: some hosts block hotlinking, so retry with a Referer and refuse HTML pages (not an image)
+        local function Fetch(Url: string)
+            local Success, Body = pcall(game.HttpGet, game, Url)
+            if Success and typeof(Body) == "string" and #Body > 0 then
+                return Body
+            end
+
+            local Request = (syn and syn.request) or request or http_request
+            if Request then
+                local Origin = Url:match("^(https?://[^/]+)") or Url
+                local RequestSuccess, Response = pcall(Request, {
+                    Url = Url,
+                    Method = "GET",
+                    Headers = {
+                        ["Referer"] = Origin .. "/",
+                        ["User-Agent"] = "Mozilla/5.0",
+                    },
+                })
+
+                if RequestSuccess and typeof(Response) == "table" and Response.StatusCode == 200 and Response.Body then
+                    return Response.Body
+                end
+
+                return nil, "HTTP " .. tostring(RequestSuccess and Response and Response.StatusCode or "error")
+            end
+
+            return nil, tostring(Body)
+        end
+
+        local Body, FetchError = Fetch(AssetData.URL)
+        if not Body then
+            warn(string.format("[Kyo UI] Could not download %s (%s)", AssetData.URL, tostring(FetchError)))
+            return false, FetchError
+        end
+
+        if Body:sub(1, 64):match("^%s*<") then
+            warn(string.format("[Kyo UI] %s is a web page, not an image file. Use a direct link to a .png / .jpg", AssetData.URL))
+            return false, "not an image"
+        end
+
+        local success, errorMessage = pcall(writefile, AssetData.Path, Body)
+        if not success then
+            warn(string.format("[Kyo UI] Could not save %s (%s)", AssetData.Path, tostring(errorMessage)))
+        end
 
         return success, errorMessage
     end
