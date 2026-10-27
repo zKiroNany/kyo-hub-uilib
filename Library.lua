@@ -112,11 +112,29 @@ do
         return false, "unsupported image format, use PNG or JPG"
     end
 
+    --// Kyo: animated backgrounds use .webm / .mp4 (Roblox does not animate GIF)
+    local function CheckVideoData(Data: any): (boolean, string?)
+        if typeof(Data) ~= "string" or #Data == 0 then
+            return false, "empty file"
+        end
+
+        if Data:sub(1, 4) == "\026E\223\163" or Data:sub(5, 8) == "ftyp" then
+            return true, nil
+        end
+
+        if Data:sub(1, 64):match("^%s*<") then
+            return false, "that link is a web page, not a video file"
+        end
+
+        return false, "unsupported video format, use .webm or .mp4"
+    end
+
     function CustomImageManager.AddAsset(
         AssetName: string,
         RobloxAssetId: number,
         URL: string,
-        ForceRedownload: boolean?
+        ForceRedownload: boolean?,
+        Kind: string?
     )
         if CustomImageManagerAssets[AssetName] ~= nil then
             error(string.format("Asset %q already exists", AssetName))
@@ -128,6 +146,7 @@ do
             RobloxId = RobloxAssetId,
             Path = string.format("Obsidian/custom_assets/%s", AssetName),
             URL = URL,
+            Kind = Kind or "image",
 
             Id = nil,
         }
@@ -171,7 +190,8 @@ do
         --// Kyo: a cached file is only reused when it is not empty and not an HTML page
         if ForceRedownload ~= true and isfile(AssetData.Path) then
             local ReadSuccess, Cached = pcall(readfile, AssetData.Path)
-            if not readfile or (ReadSuccess and CheckImageData(Cached)) then
+            local Check = AssetData.Kind == "video" and CheckVideoData or CheckImageData
+            if not readfile or (ReadSuccess and Check(Cached)) then
                 return true, nil
             end
         end
@@ -211,7 +231,7 @@ do
             return false, FetchError
         end
 
-        local ImageOk, ImageError = CheckImageData(Body)
+        local ImageOk, ImageError = (AssetData.Kind == "video" and CheckVideoData or CheckImageData)(Body)
         if not ImageOk then
             warn(string.format("[Kyo UI] %s: %s", AssetData.URL, tostring(ImageError)))
             return false, ImageError
@@ -11403,6 +11423,8 @@ function Library:CreateWindow(WindowInfo)
     local Tabs
     local Container
     local BackgroundImage
+    local BackgroundVideo
+    local BackgroundDim
     local HasBackgroundImage = false
     local BottomBackground
     local BottomBackgroundCorner
@@ -11743,6 +11765,42 @@ function Library:CreateWindow(WindowInfo)
                 Parent = BackgroundImage,
             })
         )
+
+        --// Kyo: animated background (.webm / .mp4). The dim frame sits above the video and acts as its opacity
+        BackgroundVideo = New("VideoFrame", {
+            BackgroundTransparency = 1,
+            Looped = true,
+            Playing = false,
+            Position = UDim2.fromScale(0, 0),
+            Size = UDim2.fromScale(1, 1),
+            Visible = false,
+            Volume = 0,
+            ZIndex = 0,
+            Parent = MainFrame,
+        })
+        BackgroundDim = New("Frame", {
+            BackgroundColor3 = "BackgroundColor",
+            BackgroundTransparency = 0.4,
+            Position = UDim2.fromScale(0, 0),
+            Size = UDim2.fromScale(1, 1),
+            Visible = false,
+            ZIndex = 0,
+            Parent = MainFrame,
+        })
+        for _, Layer in { BackgroundVideo, BackgroundDim } do
+            table.insert(
+                Library.Corners,
+                New("UICorner", {
+                    CornerRadius = UDim.new(0, WindowInfo.CornerRadius),
+                    Parent = Layer,
+                })
+            )
+        end
+        Library:GiveSignal(MainFrame:GetPropertyChangedSignal("Visible"):Connect(function()
+            if BackgroundVideo.Visible then
+                BackgroundVideo.Playing = MainFrame.Visible
+            end
+        end))
 
         if WindowInfo.Center then
             MainFrame.Position = UDim2.new(0.5, -MainFrame.Size.X.Offset / 2, 0.5, -MainFrame.Size.Y.Offset / 2)
@@ -12130,6 +12188,12 @@ function Library:CreateWindow(WindowInfo)
 
     function Window:SetBackgroundImage(Image: string)
         local ValidIcon = false
+        local IsVideoBackground = false
+
+        --// Kyo: reset the video layer, it is switched on again below when the new background is a video
+        BackgroundVideo.Playing = false
+        BackgroundVideo.Visible = false
+        BackgroundDim.Visible = false
 
         if typeof(Image) == "string" then
             local BackgroundIcon = Library:GetCustomIcon(Image)
@@ -12147,6 +12211,9 @@ function Library:CreateWindow(WindowInfo)
                     Segment = Segment .. ".png"
                 end
 
+                local Extension = Segment:match("%.(%w+)$"):lower()
+                local IsVideo = Extension == "webm" or Extension == "mp4"
+
                 local Hash = 0
                 for Index = 1, #Image do
                     Hash = (Hash * 31 + string.byte(Image, Index)) % 4294967296
@@ -12154,31 +12221,47 @@ function Library:CreateWindow(WindowInfo)
 
                 local FileName = string.format("%x_%s", Hash, Segment:sub(-60))
 
-                ValidIcon = true
-
-                local DownloadOk, DownloadError
-                if CustomImageManagerAssets[FileName] == nil then
-                    DownloadOk, DownloadError = CustomImageManager.AddAsset(FileName, 0, Image)
+                if Extension == "gif" then
+                    Library:Notify("GIFs do not animate in Roblox. Convert it to .webm or .mp4 (ezgif.com/gif-to-webm) and use that link", 8)
                 else
-                    DownloadOk, DownloadError = CustomImageManager.DownloadAsset(FileName, true)
-                end
+                    ValidIcon = true
 
-                --// Kyo: tell the user why the background did not load
-                if DownloadOk then
-                    local AssetId = CustomImageManager.GetAsset(FileName)
-                    BackgroundImage.Image = AssetId
-                    BackgroundImage.ImageRectOffset = Vector2.zero
-                    BackgroundImage.ImageRectSize = Vector2.zero
-
-                    if typeof(AssetId) == "string" and AssetId:match("^rbxassetid://0?$") then
-                        ValidIcon = false
-                        Library:Notify("Background image failed: your executor could not load the downloaded file (getcustomasset)", 6)
+                    local DownloadOk, DownloadError
+                    if CustomImageManagerAssets[FileName] == nil then
+                        DownloadOk, DownloadError = CustomImageManager.AddAsset(FileName, 0, Image, nil, IsVideo and "video" or "image")
                     else
-                        Library:Notify("Background image applied", 3)
+                        DownloadOk, DownloadError = CustomImageManager.DownloadAsset(FileName, true)
                     end
-                else
-                    ValidIcon = false
-                    Library:Notify(string.format("Background image failed: %s", tostring(DownloadError)), 6)
+
+                    --// Kyo: tell the user why the background did not load
+                    if DownloadOk then
+                        local AssetId = CustomImageManager.GetAsset(FileName)
+
+                        if typeof(AssetId) == "string" and AssetId:match("^rbxassetid://0?$") then
+                            ValidIcon = false
+                            Library:Notify("Background failed: your executor could not load the downloaded file (getcustomasset)", 6)
+                        elseif IsVideo then
+                            IsVideoBackground = true
+                            BackgroundVideo.Video = AssetId
+                            BackgroundVideo.Playing = true
+
+                            local VideoToCheck = AssetId
+                            task.delay(8, function()
+                                if BackgroundVideo.Visible and BackgroundVideo.Video == VideoToCheck and not BackgroundVideo.IsLoaded then
+                                    Library:Notify("Background video did not load. Your executor may not support custom videos, try a .webm file", 8)
+                                end
+                            end)
+                            Library:Notify("Background video applied", 3)
+                        else
+                            BackgroundImage.Image = AssetId
+                            BackgroundImage.ImageRectOffset = Vector2.zero
+                            BackgroundImage.ImageRectSize = Vector2.zero
+                            Library:Notify("Background image applied", 3)
+                        end
+                    else
+                        ValidIcon = false
+                        Library:Notify(string.format("Background failed: %s", tostring(DownloadError)), 6)
+                    end
                 end
             end
         end
@@ -12190,14 +12273,19 @@ function Library:CreateWindow(WindowInfo)
         end
 
         HasBackgroundImage = ValidIcon
-        BackgroundImage.Visible = ValidIcon
+        BackgroundImage.Visible = ValidIcon and not IsVideoBackground
+        BackgroundVideo.Visible = ValidIcon and IsVideoBackground
+        BackgroundDim.Visible = ValidIcon and IsVideoBackground
         Library:SetPanelTransparency(ValidIcon and Library.BackgroundPanelTransparency or 0)
         WindowInfo.BackgroundImage = Image
     end
 
     --// Kyo: 0 = fully visible, 1 = hidden
     function Window:SetBackgroundImageTransparency(Value: number)
-        BackgroundImage.ImageTransparency = math.clamp(Value, 0, 1)
+        Value = math.clamp(Value, 0, 1)
+
+        BackgroundImage.ImageTransparency = Value
+        BackgroundDim.BackgroundTransparency = 1 - Value --// a video has no transparency, the dim frame covers it instead
     end
 
     function Window:SetFooter(Footer: string)
