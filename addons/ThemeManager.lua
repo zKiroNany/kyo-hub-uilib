@@ -76,16 +76,16 @@ local ThemeManager = {
         --// Kyo: Sea Hub palette as the Default theme
         ["Default"] = {
             1,
-            { FontColor = "e6e6e6", MainColor = "232323", AccentColor = "8f48cf", BackgroundColor = "1c1c1c", OutlineColor = "323232", BackgroundImage = "", AccentColor2 = "ec4899", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "GothamBold" },
+            { FontColor = "e6e6e6", MainColor = "232323", AccentColor = "8f48cf", BackgroundColor = "1c1c1c", OutlineColor = "323232", BackgroundImage = "", AccentColor2 = "cb3e84", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "GothamBold" },
         },
         --// Kyo: community themes (colors, gradient, fonts and an original background image)
         ["Tokyo Ghoul"] = {
             2,
-            { FontColor = "f2f2f2", MainColor = "161616", AccentColor = "e5122b", BackgroundColor = "0c0c0c", OutlineColor = "2c2c2c", AccentColor2 = "ff5a6e", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "GrenzeGotisch", BackgroundImage = BackgroundBaseURL .. "tokyo-ghoul.jpg" },
+            { FontColor = "f2f2f2", MainColor = "161616", AccentColor = "e5122b", BackgroundColor = "0c0c0c", OutlineColor = "2c2c2c", AccentColor2 = "c94757", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "Antique", BackgroundImage = BackgroundBaseURL .. "tokyo-ghoul.jpg" },
         },
         ["One Piece"] = {
             3,
-            { FontColor = "fff6df", MainColor = "10223d", AccentColor = "f4b400", BackgroundColor = "0a1628", OutlineColor = "22436b", AccentColor2 = "ff4d5a", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "LuckiestGuy", BackgroundImage = BackgroundBaseURL .. "one-piece.jpg" },
+            { FontColor = "fff1d6", MainColor = "111823", AccentColor = "ffb830", BackgroundColor = "0a0f17", OutlineColor = "2b3a52", AccentColor2 = "e8622a", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "LuckiestGuy", BackgroundImage = BackgroundBaseURL .. "one-piece.jpg" },
         },
         ["Halloween"] = {
             4,
@@ -530,9 +530,9 @@ function ThemeManager:SetDefaultTheme(Theme: any)
     LibraryScheme.HeaderFont = Font.fromEnum(Enum.Font[HeaderFontName] :: Enum.Font)
     FinalTheme.HeaderFont = HeaderFontName
 
-    local SuccessGradient, Color2 = pcall(Color3.fromHex, Theme.AccentColor2 or "ec4899")
+    local SuccessGradient, Color2 = pcall(Color3.fromHex, Theme.AccentColor2 or "cb3e84")
     if not SuccessGradient then
-        Color2 = Color3.fromHex("ec4899")
+        Color2 = Color3.fromHex("cb3e84")
     end
     FinalTheme.AccentColor2 = Color2:ToHex()
     FinalTheme.AccentGradient = if typeof(Theme.AccentGradient) == "boolean" then Theme.AccentGradient else true
@@ -646,6 +646,23 @@ function ThemeManager:GetContrastReport(): { Ratio: number, PairName: string, Pa
         end
     end
 
+    --// Kyo: button text on the accent fill (every color of the gradient). The library picks the font color, white or near black, whichever reads best
+    local AccentColorOption = Library.Options.AccentColor
+    local AccentColor2Option = Library.Options.AccentColor2
+    local GradientToggle = Library.Toggles.AccentGradient
+    if AccentColorOption and Library.GetLabelColor then
+        local AccentSurfaces = { AccentColorOption.Value }
+        if AccentColor2Option and GradientToggle and GradientToggle.Value and not Library.RainbowAccent then
+            table.insert(AccentSurfaces, AccentColor2Option.Value)
+        end
+
+        local _, AccentRatio = Library:GetLabelColor(AccentSurfaces, FontColor)
+        if AccentRatio < WorstRatio then
+            WorstRatio = AccentRatio
+            WorstName = "button text vs. accent gradient"
+        end
+    end
+
     return {
         Ratio = WorstRatio,
         PairName = WorstName,
@@ -725,7 +742,7 @@ function ThemeManager:ApplyThemeData(ThemeData: any): (boolean, string?)
         local SuccessAccent, AccentColor = pcall(Color3.fromHex, ThemeData.AccentColor)
         if SuccessAccent then
             ThemeData = table.clone(ThemeData)
-            ThemeData.AccentColor2 = Library:GetAutoGradientColor(AccentColor):ToHex()
+            ThemeData.AccentColor2 = Library:GetAutoGradientColor(AccentColor, true):ToHex()
         end
     end
 
@@ -1282,8 +1299,14 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
     FontColor:OnChanged(UpdateTheme)
     FontFace:OnChanged(function(Value) ThemeManager.Library:SetFont(Enum.Font[Value]) end)
     ThemeManager.Library.Options.HeaderFont:OnChanged(function(Value) ThemeManager.Library:SetHeaderFont(Enum.Font[Value]) end)
-    ThemeManager.Library.Options.AccentColor2:OnChanged(function(Value) ThemeManager.Library:SetGradient(nil, Value) end)
-    ThemeManager.Library.Toggles.AccentGradient:OnChanged(function(Value) ThemeManager.Library:SetGradient(Value) end)
+    ThemeManager.Library.Options.AccentColor2:OnChanged(function(Value)
+        ThemeManager.Library:SetGradient(nil, Value)
+        ThemeManager:UpdateContrastWarning()
+    end)
+    ThemeManager.Library.Toggles.AccentGradient:OnChanged(function(Value)
+        ThemeManager.Library:SetGradient(Value)
+        ThemeManager:UpdateContrastWarning()
+    end)
     BackgroundImage:OnChanged(function(Value) ThemeManager.Library:SetBackgroundImage(Value) end)
 
     --// Load default

@@ -1885,7 +1885,7 @@ end
 Library.WindowFading = false --// Kyo: hover tweens are skipped while the window fades, otherwise they undo the fade on the hovered element
 Library.Gradient = {
     Enabled = true,
-    Color2 = Color3.fromRGB(236, 72, 153),
+    Color2 = Color3.fromRGB(203, 62, 132),
 }
 local GradientTargets = setmetatable({}, { __mode = "k" })
 Library.GradientTargets = GradientTargets
@@ -1894,19 +1894,121 @@ local function GradientWhite()
     return Color3.new(1, 1, 1)
 end
 
-function Library:GetAutoGradientColor(Color: Color3): Color3
+--// Kyo: readable text on accent surfaces (buttons). Text is the theme font color when it is readable on the whole gradient, otherwise white or near black, whichever is better
+Library.TextContrastMin = 4.5
+Library.LabelDark = Color3.fromRGB(14, 14, 14)
+
+local function GetColorLuminance(Color: Color3): number
+    local function Linear(Channel: number): number
+        if Channel <= 0.03928 then
+            return Channel / 12.92
+        end
+
+        return ((Channel + 0.055) / 1.055) ^ 2.4
+    end
+
+    return 0.2126 * Linear(Color.R) + 0.7152 * Linear(Color.G) + 0.0722 * Linear(Color.B)
+end
+
+function Library:GetContrastRatio(ColorA: Color3, ColorB: Color3): number
+    local LuminanceA = GetColorLuminance(ColorA)
+    local LuminanceB = GetColorLuminance(ColorB)
+
+    return (math.max(LuminanceA, LuminanceB) + 0.05) / (math.min(LuminanceA, LuminanceB) + 0.05)
+end
+
+function Library:GetLabelColor(Surfaces: { Color3 }, Preferred: Color3?): (Color3, number)
+    local function Worst(TextColor: Color3): number
+        local Lowest = math.huge
+        for _, Surface in Surfaces do
+            Lowest = math.min(Lowest, Library:GetContrastRatio(TextColor, Surface))
+        end
+
+        return Lowest
+    end
+
+    if Preferred then
+        local PreferredRatio = Worst(Preferred)
+        if PreferredRatio >= Library.TextContrastMin then
+            return Preferred, PreferredRatio
+        end
+    end
+
+    local Best, BestRatio = Color3.new(1, 1, 1), Worst(Color3.new(1, 1, 1))
+    local DarkRatio = Worst(Library.LabelDark)
+    if DarkRatio > BestRatio then
+        Best, BestRatio = Library.LabelDark, DarkRatio
+    end
+
+    return Best, BestRatio
+end
+
+--// Readable = true pulls the result toward the base color until text on both colors reaches the minimum contrast
+function Library:GetAutoGradientColor(Color: Color3, Readable: boolean?): Color3
     local Hue, Saturation, Value = Color:ToHSV()
-    return Color3.fromHSV((Hue + 0.09) % 1, math.clamp(Saturation - 0.1, 0, 1), math.min(Value + 0.2, 1))
+    local Result = Color3.fromHSV((Hue + 0.09) % 1, math.clamp(Saturation - 0.1, 0, 1), math.min(Value + 0.2, 1))
+
+    if Readable then
+        local Label = Library:GetLabelColor({ Color })
+        for _ = 1, 24 do
+            if Library:GetContrastRatio(Label, Result) >= Library.TextContrastMin + 0.15 then --// small margin, the color gets rounded to hex when saved
+                break
+            end
+
+            Result = Result:Lerp(Color, 0.2)
+        end
+    end
+
+    return Result
 end
 
 function Library:GetGradientColors(): (Color3, Color3)
     local Color1 = Library.Scheme.AccentColor
     local Color2 = Library.Gradient.Color2
     if Library.RainbowAccent or not Color2 then
-        Color2 = Library:GetAutoGradientColor(Color1)
+        Color2 = Library:GetAutoGradientColor(Color1, true)
     end
 
     return Color1, Color2
+end
+
+--// Text color for labels and icons sitting on accent buttons, and its worst contrast
+function Library:GetAccentLabelColor(): (Color3, number)
+    local Color1, Color2 = Library:GetGradientColors()
+    local Surfaces = { Color1 }
+    if Library.Gradient.Enabled then
+        table.insert(Surfaces, Color2)
+    end
+
+    return Library:GetLabelColor(Surfaces, Library.Scheme.FontColor)
+end
+
+--// Owner.Disabled decides between the plain font color (disabled buttons use the background color) and the accent label color
+function Library:AddAccentText(Object: Instance, Property: string, Owner: any)
+    local function Resolve(): Color3
+        if Owner.Disabled then
+            return Library.Scheme.FontColor
+        end
+
+        return (Library:GetAccentLabelColor())
+    end
+
+    local Props = Library.Registry[Object]
+    if Props then
+        Props[Property] = Resolve
+    else
+        Library.Registry[Object] = { [Property] = Resolve }
+    end
+
+    Object[Property] = Resolve()
+end
+
+function Library:RefreshAccentText(Object: Instance?, Property: string)
+    local Props = Object and Library.Registry[Object]
+    local Resolve = Props and Props[Property]
+    if typeof(Resolve) == "function" then
+        Object[Property] = Resolve()
+    end
 end
 
 function Library:SyncGradient(Object: Instance)
@@ -7427,6 +7529,9 @@ do
                 end
 
                 Button.IconImage.ImageTransparency = Button.Disabled and 0.8 or 0 --// Kyo: accent buttons
+                if not Button.Risky and not ParsedIcon.Custom then
+                    Library:AddAccentText(Button.IconImage, "ImageColor3", Button) --// Kyo: readable on the accent fill
+                end
                 Button.IconImage.Visible = true
                 Library:ApplyLucideIcon(Button.IconImage, ParsedIcon)
             elseif Button.IconImage then
@@ -7501,6 +7606,8 @@ do
             if Button.Risky then
                 Button.Label.TextColor3 = Library.Scheme.RedColor
                 Library.Registry[Button.Label].TextColor3 = "RedColor"
+            else
+                Library:AddAccentText(Button.Label, "TextColor3", Button) --// Kyo: readable on the accent fill
             end
 
             ApplyButtonIcon(Button, Button.Icon)
@@ -7556,15 +7663,12 @@ do
                         Button.IconImage.Visible = false
                     end
 
+                    --// Kyo: the label color is left alone here, the old accent colored text was invisible on the accent fill
                     Button.Label.Text = "Are you sure?"
-                    Button.Label.TextColor3 = Library.Scheme.AccentColor
-                    Library.Registry[Button.Label].TextColor3 = "AccentColor"
 
                     local Clicked = WaitForEvent(Button.Base.MouseButton1Click, 0.5)
 
                     Button.Label.Text = Button.Text
-                    Button.Label.TextColor3 = Button.Risky and Library.Scheme.RedColor or Library.Scheme.FontColor
-                    Library.Registry[Button.Label].TextColor3 = Button.Risky and "RedColor" or "FontColor"
 
                     if Button.IconImage then
                         Button.IconImage.Visible = IconWasVisible
@@ -7634,6 +7738,8 @@ do
                 SubButton.Base.BackgroundTransparency = SubButton.Disabled and 0 or 0.1
                 SubButton.Label.TextTransparency = SubButton.Disabled and 0.8 or 0
                 SubButton.Stroke.Enabled = SubButton.Disabled
+                Library:RefreshAccentText(SubButton.Label, "TextColor3")
+                Library:RefreshAccentText(SubButton.IconImage, "ImageColor3")
 
                 if SubButton.IconImage and SubButton.IconImage.Visible then
                     SubButton.IconImage.ImageTransparency = SubButton.Disabled and 0.8 or 0
@@ -7736,6 +7842,8 @@ do
             Button.Base.BackgroundTransparency = Button.Disabled and 0 or 0.1
             Button.Label.TextTransparency = Button.Disabled and 0.8 or 0
             Button.Stroke.Enabled = Button.Disabled
+            Library:RefreshAccentText(Button.Label, "TextColor3")
+            Library:RefreshAccentText(Button.IconImage, "ImageColor3")
 
             if Button.IconImage and Button.IconImage.Visible then
                 Button.IconImage.ImageTransparency = Button.Disabled and 0.8 or 0
