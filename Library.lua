@@ -89,6 +89,29 @@ do
         return TraversedPath
     end
 
+    --// Kyo: Roblox only renders PNG / JPG / BMP, anything else shows up as an empty image
+    local function CheckImageData(Data: any): (boolean, string?)
+        if typeof(Data) ~= "string" or #Data == 0 then
+            return false, "empty file"
+        end
+
+        if Data:sub(1, 4) == "\137PNG" or Data:sub(1, 3) == "\255\216\255" or Data:sub(1, 2) == "BM" then
+            return true, nil
+        end
+
+        if Data:sub(1, 64):match("^%s*<") then
+            return false, "that link is a web page, not an image file"
+        end
+        if Data:sub(1, 4) == "RIFF" and Data:sub(9, 12) == "WEBP" then
+            return false, "WebP is not supported by Roblox, use PNG or JPG"
+        end
+        if Data:sub(1, 3) == "GIF" then
+            return false, "GIF is not supported by Roblox, use PNG or JPG"
+        end
+
+        return false, "unsupported image format, use PNG or JPG"
+    end
+
     function CustomImageManager.AddAsset(
         AssetName: string,
         RobloxAssetId: number,
@@ -148,7 +171,7 @@ do
         --// Kyo: a cached file is only reused when it is not empty and not an HTML page
         if ForceRedownload ~= true and isfile(AssetData.Path) then
             local ReadSuccess, Cached = pcall(readfile, AssetData.Path)
-            if not readfile or (ReadSuccess and typeof(Cached) == "string" and #Cached > 0 and not Cached:sub(1, 64):match("^%s*<")) then
+            if not readfile or (ReadSuccess and CheckImageData(Cached)) then
                 return true, nil
             end
         end
@@ -188,9 +211,10 @@ do
             return false, FetchError
         end
 
-        if Body:sub(1, 64):match("^%s*<") then
-            warn(string.format("[Kyo UI] %s is a web page, not an image file. Use a direct link to a .png / .jpg", AssetData.URL))
-            return false, "not an image"
+        local ImageOk, ImageError = CheckImageData(Body)
+        if not ImageOk then
+            warn(string.format("[Kyo UI] %s: %s", AssetData.URL, tostring(ImageError)))
+            return false, ImageError
         end
 
         local success, errorMessage = pcall(writefile, AssetData.Path, Body)
@@ -12140,9 +12164,17 @@ function Library:CreateWindow(WindowInfo)
 
                 --// Kyo: tell the user why the background did not load
                 if DownloadOk then
-                    BackgroundImage.Image = CustomImageManager.GetAsset(FileName)
+                    local AssetId = CustomImageManager.GetAsset(FileName)
+                    BackgroundImage.Image = AssetId
                     BackgroundImage.ImageRectOffset = Vector2.zero
                     BackgroundImage.ImageRectSize = Vector2.zero
+
+                    if typeof(AssetId) == "string" and AssetId:match("^rbxassetid://0?$") then
+                        ValidIcon = false
+                        Library:Notify("Background image failed: your executor could not load the downloaded file (getcustomasset)", 6)
+                    else
+                        Library:Notify("Background image applied", 3)
+                    end
                 else
                     ValidIcon = false
                     Library:Notify(string.format("Background image failed: %s", tostring(DownloadError)), 6)
