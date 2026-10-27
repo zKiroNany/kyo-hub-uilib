@@ -60,6 +60,9 @@ local function IsFontName(Name: any): boolean
     return typeof(Name) == "string" and table.find(FontNames, Name) ~= nil
 end
 
+--// Kyo: defined after the ThemeManager table (see ResolveFont below SetLibrary)
+local ResolveFont
+
 local ThemeManager = {
     Library = nil,
 
@@ -76,7 +79,12 @@ local ThemeManager = {
         --// Kyo: Sea Hub palette as the Default theme
         ["Default"] = {
             1,
-            { FontColor = "e6e6e6", MainColor = "232323", AccentColor = "8f48cf", BackgroundColor = "1c1c1c", OutlineColor = "323232", BackgroundImage = "", AccentColor2 = "cb3e84", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "GothamBold" },
+            { FontColor = "ffffff", MainColor = "331a47", AccentColor = "a4ff8e", BackgroundColor = "170f1c", OutlineColor = "4b316b", BackgroundImage = BackgroundBaseURL .. "default.jpg", AccentColor2 = "bc7df4", AccentGradient = true, FontFace = "ArimoBold", HeaderFont = "GothamBlack" },
+        },
+        --// Kyo: same colors as Default with the mint to purple wave
+        ["Mint Purple"] = {
+            1.5,
+            { FontColor = "ffffff", MainColor = "331a47", AccentColor = "a4ff8e", BackgroundColor = "170f1c", OutlineColor = "4b316b", BackgroundImage = BackgroundBaseURL .. "mint-purple.jpg", AccentColor2 = "bc7df4", AccentGradient = true, FontFace = "ArimoBold", HeaderFont = "GothamBlack" },
         },
         --// Kyo: community themes (colors, gradient, fonts and an original background image)
         ["Tokyo Ghoul"] = {
@@ -184,6 +192,38 @@ local ThemeManager = {
 
 function ThemeManager:SetLibrary(Library)
     ThemeManager.Library = Library
+
+    --// Kyo: custom fonts of the library (Montserrat, Monocraft...) join the Enum.Font names
+    if Library and typeof(Library.CustomFontNames) == "table" then
+        for _, CustomFontName in Library.CustomFontNames do
+            if not table.find(FontNames, CustomFontName) then
+                table.insert(FontNames, CustomFontName)
+            end
+        end
+        table.sort(FontNames)
+    end
+end
+
+--// Kyo: Enum.Font name or custom font name to a Font object (custom fonts yield while they download once), nil when it cannot be loaded
+ResolveFont = function(Name: any): Font?
+    if typeof(Name) ~= "string" then
+        return nil
+    end
+
+    local Library = ThemeManager and ThemeManager.Library
+    if Library and Library:IsCustomFont(Name) then
+        local Loaded = Library:GetCustomFont(Name)
+        return Loaded
+    end
+
+    local Success, Item = pcall(function()
+        return (Enum.Font :: any)[Name]
+    end)
+    if Success and typeof(Item) == "EnumItem" then
+        return Font.fromEnum(Item :: any)
+    end
+
+    return nil
 end
 
 --// Helpers \\--
@@ -517,8 +557,10 @@ function ThemeManager:SetDefaultTheme(Theme: any)
         FinalTheme.FontFace = FontFace.Name
 
     elseif FontFaceType == "string" then
-        LibraryScheme.Font = Font.fromEnum(Enum.Font[FontFace] :: Enum.Font)
-        FinalTheme.FontFace = FontFace
+        --// Kyo: may be a custom font name, which is downloaded here if needed
+        local ResolvedFont = if IsFontName(FontFace) then ResolveFont(FontFace) else nil
+        LibraryScheme.Font = ResolvedFont or Font.fromEnum(Enum.Font.GothamMedium)
+        FinalTheme.FontFace = if ResolvedFont then FontFace else "GothamMedium"
     
     else
         LibraryScheme.Font = Font.fromEnum(Enum.Font.GothamMedium)
@@ -527,12 +569,17 @@ function ThemeManager:SetDefaultTheme(Theme: any)
 
     --// Kyo: header font and accent gradient
     local HeaderFontName = if IsFontName(Theme.HeaderFont) then Theme.HeaderFont else "GothamBold"
-    LibraryScheme.HeaderFont = Font.fromEnum(Enum.Font[HeaderFontName] :: Enum.Font)
+    local ResolvedHeaderFont = ResolveFont(HeaderFontName)
+    if not ResolvedHeaderFont then
+        HeaderFontName = "GothamBold"
+        ResolvedHeaderFont = Font.fromEnum(Enum.Font.GothamBold)
+    end
+    LibraryScheme.HeaderFont = ResolvedHeaderFont
     FinalTheme.HeaderFont = HeaderFontName
 
-    local SuccessGradient, Color2 = pcall(Color3.fromHex, Theme.AccentColor2 or "cb3e84")
+    local SuccessGradient, Color2 = pcall(Color3.fromHex, Theme.AccentColor2 or "bc7df4")
     if not SuccessGradient then
-        Color2 = Color3.fromHex("cb3e84")
+        Color2 = Color3.fromHex("bc7df4")
     end
     FinalTheme.AccentColor2 = Color2:ToHex()
     FinalTheme.AccentGradient = if typeof(Theme.AccentGradient) == "boolean" then Theme.AccentGradient else true
@@ -756,11 +803,11 @@ function ThemeManager:ApplyThemeData(ThemeData: any): (boolean, string?)
 
         if Index == "FontFace" then
             if not IsFontName(Value) then continue end
-            ThemeManager.Library:SetFont(Enum.Font[Value])
+            ThemeManager.Library:SetFont(Value)
 
         elseif Index == "HeaderFont" then
             if not IsFontName(Value) then continue end
-            ThemeManager.Library:SetHeaderFont(Enum.Font[Value])
+            ThemeManager.Library:SetHeaderFont(Value)
 
         elseif Index == "AccentColor2" then
             local SuccessColor, Color = pcall(Color3.fromHex, Value)
@@ -775,7 +822,10 @@ function ThemeManager:ApplyThemeData(ThemeData: any): (boolean, string?)
 
         elseif Index == "BackgroundImage" then
             if typeof(Value) ~= "string" then continue end
+            --// Kyo: no "applied" popup every time a theme (or startup) sets its own background
+            ThemeManager.Library.QuietBackground = true
             ThemeManager.Library:SetBackgroundImage(Value)
+            ThemeManager.Library.QuietBackground = false
 
         elseif table.find(SchemeIndexes, Index) then
             local SuccessColor, Color = pcall(Color3.fromHex, Value)
@@ -951,7 +1001,7 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
     Themesbox:AddDropdown("FontFace", {
         Text = "Font Face",
         Favorites = "Fonts",
-        Default = "GothamMedium",
+        Default = "ArimoBold",
 
         Values = table.clone(FontNames),
         Searchable = true,
@@ -961,7 +1011,7 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
     Themesbox:AddDropdown("HeaderFont", {
         Text = "Header Font (Bold)",
         Favorites = "Fonts",
-        Default = "GothamBold",
+        Default = "GothamBlack",
 
         Values = table.clone(FontNames),
         Searchable = true,
@@ -980,7 +1030,7 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
 
     Themesbox:AddSlider("BackgroundImageOpacity", {
         Text = "Background Opacity",
-        Default = 40,
+        Default = 50,
         Min = 5,
         Max = 100,
         Rounding = 0,
@@ -1297,8 +1347,8 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
     AccentColor:OnChanged(UpdateTheme)
     OutlineColor:OnChanged(UpdateTheme)
     FontColor:OnChanged(UpdateTheme)
-    FontFace:OnChanged(function(Value) ThemeManager.Library:SetFont(Enum.Font[Value]) end)
-    ThemeManager.Library.Options.HeaderFont:OnChanged(function(Value) ThemeManager.Library:SetHeaderFont(Enum.Font[Value]) end)
+    FontFace:OnChanged(function(Value) ThemeManager.Library:SetFont(Value) end)
+    ThemeManager.Library.Options.HeaderFont:OnChanged(function(Value) ThemeManager.Library:SetHeaderFont(Value) end)
     ThemeManager.Library.Options.AccentColor2:OnChanged(function(Value)
         ThemeManager.Library:SetGradient(nil, Value)
         ThemeManager:UpdateContrastWarning()
@@ -1319,11 +1369,15 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
 end
 
 function ThemeManager:CreateGroupBox(Tab: any, IconName: string)
-    return Tab:AddGroupbox({
+    local Groupbox = Tab:AddGroupbox({
         Side = "Left",
         Name = "Themes",
         IconName = IconName or "paintbrush",
+        Collapsed = true, --// Kyo: starts minimized on every load
     })
+    Groupbox.AlwaysCollapsed = true --// SaveManager layouts do not reopen it
+
+    return Groupbox
 end
 
 function ThemeManager:ApplyToTab(Tab: any, IconName: string)

@@ -679,15 +679,15 @@ local Library = {
 
     --// Scheme \\--
     IsLightTheme = false,
-    --// Kyo: Sea Hub palette with Kyo purple accent
+    --// Kyo: mint to purple palette (same values as the Default theme of ThemeManager)
     Scheme = {
-        BackgroundColor = Color3.fromRGB(28, 28, 28),
-        MainColor = Color3.fromRGB(35, 35, 35),
-        AccentColor = Color3.fromRGB(143, 72, 207),
-        OutlineColor = Color3.fromRGB(50, 50, 50),
-        FontColor = Color3.fromRGB(230, 230, 230),
-        Font = Font.fromEnum(Enum.Font.GothamMedium),
-        HeaderFont = Font.fromEnum(Enum.Font.GothamBold), --// Kyo: headers (tabs, groupbox titles) and Bold = true elements
+        BackgroundColor = Color3.fromRGB(23, 15, 28),
+        MainColor = Color3.fromRGB(51, 26, 71),
+        AccentColor = Color3.fromRGB(164, 255, 142),
+        OutlineColor = Color3.fromRGB(75, 49, 107),
+        FontColor = Color3.fromRGB(255, 255, 255),
+        Font = Font.fromEnum(Enum.Font.ArimoBold),
+        HeaderFont = Font.fromEnum(Enum.Font.GothamBlack), --// Kyo: headers (tabs, groupbox titles) and Bold = true elements
 
         RedColor = Color3.fromRGB(255, 50, 50),
         DestructiveColor = Color3.fromRGB(220, 38, 38),
@@ -1885,7 +1885,7 @@ end
 Library.WindowFading = false --// Kyo: hover tweens are skipped while the window fades, otherwise they undo the fade on the hovered element
 Library.Gradient = {
     Enabled = true,
-    Color2 = Color3.fromRGB(203, 62, 132),
+    Color2 = Color3.fromRGB(188, 125, 244),
 }
 local GradientTargets = setmetatable({}, { __mode = "k" })
 Library.GradientTargets = GradientTargets
@@ -2110,6 +2110,121 @@ local function EnsureFolderFor(Path: string)
         end
         Traversed = Traversed .. "/"
     end
+end
+
+--// Kyo: custom fonts. The TTF files live in the fonts/ folder of this repo (all SIL OFL, see fonts/licenses).
+--// They are downloaded once, registered as a font family with getcustomasset and then used like any Roblox font.
+Library.CustomFontBaseURL = BaseURL .. "fonts/"
+Library.CustomFonts = {
+    ["Montserrat"] = "Montserrat-Regular.ttf",
+    ["Montserrat SemiBold"] = "Montserrat-SemiBold.ttf",
+    ["Montserrat Bold"] = "Montserrat-Bold.ttf",
+    ["Poppins"] = "Poppins-Regular.ttf",
+    ["Poppins SemiBold"] = "Poppins-SemiBold.ttf",
+    ["Poppins Bold"] = "Poppins-Bold.ttf",
+    ["Monocraft (Minecraft)"] = "Monocraft.ttf",
+    ["Press Start 2P (Arcade)"] = "PressStart2P-Regular.ttf",
+    ["Silkscreen (Pixel)"] = "Silkscreen-Regular.ttf",
+    ["Silkscreen Bold (Pixel)"] = "Silkscreen-Bold.ttf",
+    ["Jersey 10 (Pixel)"] = "Jersey10-Regular.ttf",
+    ["VT323 (Terminal)"] = "VT323-Regular.ttf",
+    ["Audiowide"] = "Audiowide-Regular.ttf",
+    ["Russo One"] = "RussoOne-Regular.ttf",
+    ["Righteous"] = "Righteous-Regular.ttf",
+    ["Bungee"] = "Bungee-Regular.ttf",
+    ["Chakra Petch Bold"] = "ChakraPetch-Bold.ttf",
+    ["Rajdhani Bold"] = "Rajdhani-Bold.ttf",
+}
+Library.CustomFontNames = {}
+for CustomFontName in Library.CustomFonts do
+    table.insert(Library.CustomFontNames, CustomFontName)
+end
+table.sort(Library.CustomFontNames)
+
+local CustomFontCache = {}
+
+local function IsFontData(Data: any): boolean
+    if typeof(Data) ~= "string" or #Data < 64 then
+        return false
+    end
+
+    local Header = Data:sub(1, 4)
+    return Header == "\0\1\0\0" or Header == "OTTO" or Header == "true" or Header == "ttcf"
+end
+
+function Library:IsCustomFont(Name: any): boolean
+    return typeof(Name) == "string" and Library.CustomFonts[Name] ~= nil
+end
+
+--// Yields while the file is downloaded the first time. Returns nil and a reason when the font cannot be loaded
+function Library:GetCustomFont(Name: string): (Font?, string?)
+    if CustomFontCache[Name] then
+        return CustomFontCache[Name]
+    end
+
+    local FileName = Library.CustomFonts[Name]
+    if not FileName then
+        return nil, "unknown font"
+    end
+    if not (getcustomasset and writefile and isfile and readfile) then
+        return nil, "your executor does not support custom files (getcustomasset / writefile)"
+    end
+
+    local FontPath = "Obsidian/custom_fonts/" .. FileName
+    local FamilyPath = FontPath .. ".font"
+    EnsureFolderFor(FontPath)
+
+    local HasFile = false
+    if isfile(FontPath) then
+        local ReadSuccess, Data = pcall(readfile, FontPath)
+        HasFile = ReadSuccess and IsFontData(Data)
+    end
+
+    if not HasFile then
+        local Body, FetchError = CustomImageManager.Fetch(Library.CustomFontBaseURL .. FileName)
+        if not Body then
+            return nil, string.format("download failed (%s)", tostring(FetchError))
+        end
+        if not IsFontData(Body) then
+            return nil, "the downloaded file is not a font"
+        end
+
+        local WriteSuccess, WriteError = pcall(writefile, FontPath, Body)
+        if not WriteSuccess then
+            return nil, string.format("could not save the file (%s)", tostring(WriteError))
+        end
+    end
+
+    local AssetSuccess, AssetId = pcall(getcustomasset, FontPath)
+    if not AssetSuccess or not AssetId then
+        return nil, "getcustomasset failed"
+    end
+
+    local Family = {
+        name = Name,
+        faces = { { name = "Regular", weight = 400, style = "normal", assetId = AssetId } },
+    }
+    local FamilyWriteSuccess, FamilyWriteError = pcall(
+        writefile,
+        FamilyPath,
+        game:GetService("HttpService"):JSONEncode(Family)
+    )
+    if not FamilyWriteSuccess then
+        return nil, string.format("could not save the font family (%s)", tostring(FamilyWriteError))
+    end
+
+    local FamilySuccess, FamilyId = pcall(getcustomasset, FamilyPath)
+    if not FamilySuccess or not FamilyId then
+        return nil, "getcustomasset failed for the font family"
+    end
+
+    local FontSuccess, Result = pcall(Font.new, FamilyId)
+    if not FontSuccess then
+        return nil, tostring(Result)
+    end
+
+    CustomFontCache[Name] = Result
+    return Result
 end
 
 function Library:LoadFavorites()
@@ -11473,7 +11588,55 @@ do
     end
 end
 
+--// Kyo: font names are Enum.Font names or custom font names (see Library.CustomFonts). Returns the Font, or nil plus a reason
+local function ResolveFontName(Name: string): (Font?, string?)
+    if Library:IsCustomFont(Name) then
+        return Library:GetCustomFont(Name)
+    end
+
+    local Success, Item = pcall(function()
+        return (Enum.Font :: any)[Name]
+    end)
+    if Success and typeof(Item) == "EnumItem" then
+        return Font.fromEnum(Item :: any)
+    end
+
+    return nil, "unknown font"
+end
+
+local FontRequestToken = 0
+local HeaderFontRequestToken = 0
+
 function Library:SetFont(FontFace)
+    FontRequestToken += 1
+
+    if typeof(FontFace) == "string" then
+        local FontName = FontFace
+        if Library:IsCustomFont(FontName) then
+            --// custom fonts may need a download, so they are applied when ready (a newer request cancels this one)
+            local MyToken = FontRequestToken
+            task.spawn(function()
+                local Loaded, Reason = ResolveFontName(FontName)
+                if MyToken ~= FontRequestToken or Library.Unloaded then
+                    return
+                end
+                if not Loaded then
+                    Library:Notify(string.format("Font %q failed: %s", FontName, tostring(Reason)), 6)
+                    return
+                end
+
+                Library:SetFont(Loaded)
+            end)
+            return
+        end
+
+        local Resolved = ResolveFontName(FontName)
+        if not Resolved then
+            return
+        end
+        FontFace = Resolved
+    end
+
     if typeof(FontFace) == "EnumItem" then
         FontFace = Font.fromEnum(FontFace :: any)
     end
@@ -11494,6 +11657,34 @@ function Library:SetFont(FontFace)
 end
 
 function Library:SetHeaderFont(FontFace)
+    HeaderFontRequestToken += 1
+
+    if typeof(FontFace) == "string" then
+        local FontName = FontFace
+        if Library:IsCustomFont(FontName) then
+            local MyToken = HeaderFontRequestToken
+            task.spawn(function()
+                local Loaded, Reason = ResolveFontName(FontName)
+                if MyToken ~= HeaderFontRequestToken or Library.Unloaded then
+                    return
+                end
+                if not Loaded then
+                    Library:Notify(string.format("Font %q failed: %s", FontName, tostring(Reason)), 6)
+                    return
+                end
+
+                Library:SetHeaderFont(Loaded)
+            end)
+            return
+        end
+
+        local Resolved = ResolveFontName(FontName)
+        if not Resolved then
+            return
+        end
+        FontFace = Resolved
+    end
+
     if typeof(FontFace) == "EnumItem" then
         FontFace = Font.fromEnum(FontFace :: any)
     end
@@ -12074,7 +12265,8 @@ function Library:CreateWindow(WindowInfo)
     local StopGif
     local StartGif
     local ApplyBackgroundState
-    local GifPlayer = { Token = 0, Connection = nil, Editable = nil, Frames = nil }
+    local AppliedBackground = nil --// Kyo: last background link that loaded fine
+    local GifPlayer ={ Token = 0, Connection = nil, Editable = nil, Frames = nil }
     local HasBackgroundImage = false
     local BottomBackground
     local BottomBackgroundCorner
@@ -12400,7 +12592,7 @@ function Library:CreateWindow(WindowInfo)
             ScaleType = Enum.ScaleType.Crop,
             ZIndex = 0,
             BackgroundTransparency = 1,
-            ImageTransparency = 0.6,
+            ImageTransparency = 0.5,
             Visible = HasBackgroundImage,
             Parent = MainFrame,
         })
@@ -12767,6 +12959,7 @@ function Library:CreateWindow(WindowInfo)
             BackgroundColor3 = function()
                 return Library:GetBetterColor(Library.Scheme.BackgroundColor, 4)
             end,
+            BackgroundTransparency = 1, --// Kyo: the footer (discord link and resize handle) has no background of its own
             Position = UDim2.fromScale(0, 1),
             Size = UDim2.new(1, 0, 0, math.max(20, WindowInfo.CornerRadius * 2)),
             ZIndex = 3,
@@ -12927,6 +13120,12 @@ function Library:CreateWindow(WindowInfo)
         local ValidIcon = false
         local IsVideoBackground = false
 
+        --// Kyo: the same link again (a theme applies it twice, once directly and once through the input) is not downloaded twice
+        if typeof(Image) == "string" and Image ~= "" and Image == AppliedBackground then
+            return
+        end
+        AppliedBackground = nil
+
         --// Kyo: reset the video / GIF layers, they are switched on again below when the new background needs them
         StopGif()
         BackgroundVideo.Playing = false
@@ -13004,6 +13203,7 @@ function Library:CreateWindow(WindowInfo)
                         end
 
                         WindowInfo.BackgroundImage = Image
+                        AppliedBackground = Image
                         ApplyBackgroundState(true, false)
                         Library:Notify(string.format("GIF background applied (%d frames)", #Gif.Frames), 4)
                     end)
@@ -13035,12 +13235,16 @@ function Library:CreateWindow(WindowInfo)
                                     Library:Notify("Background video did not load. Your executor may not support custom videos, try a .webm file", 8)
                                 end
                             end)
-                            Library:Notify("Background video applied", 3)
+                            if not Library.QuietBackground then
+                                Library:Notify("Background video applied", 3)
+                            end
                         else
                             BackgroundImage.Image = AssetId
                             BackgroundImage.ImageRectOffset = Vector2.zero
                             BackgroundImage.ImageRectSize = Vector2.zero
-                            Library:Notify("Background image applied", 3)
+                            if not Library.QuietBackground then
+                                Library:Notify("Background image applied", 3)
+                            end
                         end
                     else
                         ValidIcon = false
@@ -13058,6 +13262,9 @@ function Library:CreateWindow(WindowInfo)
 
         ApplyBackgroundState(ValidIcon and not IsVideoBackground, ValidIcon and IsVideoBackground)
         WindowInfo.BackgroundImage = Image
+        if ValidIcon and typeof(Image) == "string" and Image:match("^https?://") then
+            AppliedBackground = Image
+        end
     end
 
     --// Kyo: 0 = fully visible, 1 = hidden

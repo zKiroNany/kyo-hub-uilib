@@ -216,7 +216,7 @@ local ElementParser = {}; do
             if not Groupbox then return end
 
             --// Collapsed
-            if Groupbox.Collapsed ~= Data.collapsed then
+            if not Groupbox.AlwaysCollapsed and Groupbox.Collapsed ~= Data.collapsed then --// Kyo: the Themes groupbox always starts minimized
                 Groupbox:SetCollapsed(Data.collapsed == true)
             end
 
