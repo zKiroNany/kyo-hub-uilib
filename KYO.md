@@ -7,7 +7,10 @@ Base snapshot: upstream `bdaa9b8` (first commit of this repo).
 
 ## Skin patches (Sea Hub look)
 
-- `Library.Scheme` defaults: Sea Hub palette (background 28, main 35, outline 50, accent 131/181/255), GothamMedium font.
+- `Library.Scheme` defaults: Sea Hub grey palette (background 28, main 35, outline 50) with Kyo purple accent (143/72/207, `8f48cf`), GothamMedium font.
+- Buttons and sub buttons: accent fill (0.1 transparency, 0 on hover), white label, outline stroke only when disabled.
+- Sliders (non compact): thin 8px bar, value at the right of the title row. Compact sliders keep the Obsidian look.
+- `Library:SetRainbowAccent(Enabled, Speed)`: cycles `AccentColor` at 30 fps through the registry, disconnected by `Unload`. Restores the previous accent when turned off.
 - `Templates.Window` defaults: size 660x460, corner radius 6, new `SidebarWidth = 176`, animations on, tab buttons with accent indicator.
 - Window: accent border, left aligned accent title, sidebar and page as floating rounded panels (`PanelMargin`).
 - Tabs: 34px buttons, outline-colored selected background at 0.5 transparency.

@@ -788,6 +788,26 @@ MenuGroup:AddSlider("UICornerSlider", {
 	end
 })
 
+--// Kyo: premium extras
+MenuGroup:AddToggle("RainbowAccent", {
+	Text = "Rainbow Accent",
+	Default = false,
+	Callback = function(Value)
+		Library:SetRainbowAccent(Value)
+	end,
+})
+MenuGroup:AddSlider("RainbowSpeed", {
+	Text = "Rainbow Speed",
+	Default = 25,
+	Min = 5,
+	Max = 100,
+	Rounding = 0,
+	HideMax = true,
+	Callback = function(Value)
+		Library.RainbowSpeed = Value / 100
+	end,
+})
+
 MenuGroup:AddDivider()
 MenuGroup:AddLabel("Menu bind")
 	:AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })

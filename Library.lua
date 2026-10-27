@@ -276,11 +276,11 @@ local Library = {
 
     --// Scheme \\--
     IsLightTheme = false,
-    --// Kyo: Sea Hub palette
+    --// Kyo: Sea Hub palette with Kyo purple accent
     Scheme = {
         BackgroundColor = Color3.fromRGB(28, 28, 28),
         MainColor = Color3.fromRGB(35, 35, 35),
-        AccentColor = Color3.fromRGB(131, 181, 255),
+        AccentColor = Color3.fromRGB(143, 72, 207),
         OutlineColor = Color3.fromRGB(50, 50, 50),
         FontColor = Color3.fromRGB(230, 230, 230),
         Font = Font.fromEnum(Enum.Font.GothamMedium),
@@ -6771,7 +6771,7 @@ do
                     Library.Registry[Button.IconImage].ImageColor3 = ColorKey
                 end
 
-                Button.IconImage.ImageTransparency = Button.Disabled and 0.8 or 0.4
+                Button.IconImage.ImageTransparency = Button.Disabled and 0.8 or 0 --// Kyo: accent buttons
                 Button.IconImage.Visible = true
                 Library:ApplyLucideIcon(Button.IconImage, ParsedIcon)
             elseif Button.IconImage then
@@ -6782,7 +6782,8 @@ do
         local function CreateButton(Button)
             local Base = New("TextButton", {
                 Active = not Button.Disabled,
-                BackgroundColor3 = Button.Disabled and "BackgroundColor" or "MainColor",
+                BackgroundColor3 = Button.Disabled and "BackgroundColor" or "AccentColor", --// Kyo: accent buttons
+                BackgroundTransparency = Button.Disabled and 0 or 0.1,
                 Size = UDim2.fromScale(1, 1),
                 Text = "",
                 Visible = Button.Visible,
@@ -6791,7 +6792,8 @@ do
 
             local Stroke = New("UIStroke", {
                 Color = "OutlineColor",
-                Transparency = Button.Disabled and 0.5 or 0,
+                Transparency = 0.5,
+                Enabled = Button.Disabled,
                 Parent = Base,
             })
 
@@ -6832,7 +6834,7 @@ do
                 Size = UDim2.fromOffset(0, 16),
                 Text = Button.Text,
                 TextSize = 14,
-                TextTransparency = Button.Disabled and 0.8 or 0.4,
+                TextTransparency = Button.Disabled and 0.8 or 0,
                 Parent = Content,
             })
 
@@ -6852,8 +6854,8 @@ do
                     return
                 end
 
-                Button.Tween = TweenService:Create(Button.Label, Library.TweenInfo, {
-                    TextTransparency = 0,
+                Button.Tween = TweenService:Create(Button.Base, Library.TweenInfo, {
+                    BackgroundTransparency = 0,
                 })
                 Button.Tween:Play()
 
@@ -6868,14 +6870,14 @@ do
                     return
                 end
 
-                Button.Tween = TweenService:Create(Button.Label, Library.TweenInfo, {
-                    TextTransparency = 0.4,
+                Button.Tween = TweenService:Create(Button.Base, Library.TweenInfo, {
+                    BackgroundTransparency = 0.1,
                 })
                 Button.Tween:Play()
 
                 if Button.IconImage and Button.IconImage.Visible then
                     TweenService:Create(Button.IconImage, Library.TweenInfo, {
-                        ImageTransparency = 0.4,
+                        ImageTransparency = 0,
                     }):Play()
                 end
             end))
@@ -6966,16 +6968,18 @@ do
 
                 StopTween(SubButton.Tween)
 
-                SubButton.Base.BackgroundColor3 = SubButton.Disabled and Library.Scheme.BackgroundColor or Library.Scheme.MainColor
-                SubButton.Label.TextTransparency = SubButton.Disabled and 0.8 or 0.4
-                SubButton.Stroke.Transparency = SubButton.Disabled and 0.5 or 0
+                --// Kyo: accent buttons
+                SubButton.Base.BackgroundColor3 = SubButton.Disabled and Library.Scheme.BackgroundColor or Library.Scheme.AccentColor
+                SubButton.Base.BackgroundTransparency = SubButton.Disabled and 0 or 0.1
+                SubButton.Label.TextTransparency = SubButton.Disabled and 0.8 or 0
+                SubButton.Stroke.Enabled = SubButton.Disabled
 
                 if SubButton.IconImage and SubButton.IconImage.Visible then
-                    SubButton.IconImage.ImageTransparency = SubButton.Disabled and 0.8 or 0.4
+                    SubButton.IconImage.ImageTransparency = SubButton.Disabled and 0.8 or 0
                 end
 
                 Library.Registry[SubButton.Base].BackgroundColor3 = SubButton.Disabled and "BackgroundColor"
-                    or "MainColor"
+                    or "AccentColor"
             end
 
             function SubButton:SetDisabled(Disabled: boolean)
@@ -7065,15 +7069,17 @@ do
 
             StopTween(Button.Tween)
 
-            Button.Base.BackgroundColor3 = Button.Disabled and Library.Scheme.BackgroundColor or Library.Scheme.MainColor
-            Button.Label.TextTransparency = Button.Disabled and 0.8 or 0.4
-            Button.Stroke.Transparency = Button.Disabled and 0.5 or 0
+            --// Kyo: accent buttons
+            Button.Base.BackgroundColor3 = Button.Disabled and Library.Scheme.BackgroundColor or Library.Scheme.AccentColor
+            Button.Base.BackgroundTransparency = Button.Disabled and 0 or 0.1
+            Button.Label.TextTransparency = Button.Disabled and 0.8 or 0
+            Button.Stroke.Enabled = Button.Disabled
 
             if Button.IconImage and Button.IconImage.Visible then
-                Button.IconImage.ImageTransparency = Button.Disabled and 0.8 or 0.4
+                Button.IconImage.ImageTransparency = Button.Disabled and 0.8 or 0
             end
 
-            Library.Registry[Button.Base].BackgroundColor3 = Button.Disabled and "BackgroundColor" or "MainColor"
+            Library.Registry[Button.Base].BackgroundColor3 = Button.Disabled and "BackgroundColor" or "AccentColor"
         end
 
         function Button:SetDisabled(Disabled: boolean)
@@ -7996,10 +8002,12 @@ do
 
         local Holder = New("Frame", {
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, Info.Compact and 15 or 33),
+            Size = UDim2.new(1, 0, 0, Info.Compact and 15 or 30), --// Kyo: thin slider
             Visible = Slider.Visible,
             Parent = Container,
         })
+
+        local Thin = not Info.Compact
 
         local SliderLabel
         if not Info.Compact then
@@ -8018,43 +8026,53 @@ do
             AnchorPoint = Vector2.new(0, 1),
             BackgroundColor3 = "MainColor",
             Position = UDim2.fromScale(0, 1),
-            Size = UDim2.new(1, 0, 0, 15),
+            Size = UDim2.new(1, 0, 0, Thin and 8 or 15),
             Text = "",
             Parent = Holder,
         })
 
-        New("UIStroke", {
-            Color = "OutlineColor",
-            Parent = Bar,
-        })
+        if not Thin then
+            New("UIStroke", {
+                Color = "OutlineColor",
+                Parent = Bar,
+            })
+        else
+            Bar.BackgroundColor3 = Library.Scheme.OutlineColor
+            Library.Registry[Bar].BackgroundColor3 = "OutlineColor"
+        end
 
+        --// Kyo: value sits at the right of the title row on thin sliders
         local DisplayLabel = New("TextLabel", {
             BackgroundTransparency = 1,
-            Size = UDim2.fromScale(1, 1),
+            Size = Thin and UDim2.new(1, 0, 0, 14) or UDim2.fromScale(1, 1),
             Text = "",
             TextSize = 14,
+            TextXAlignment = Thin and Enum.TextXAlignment.Right or Enum.TextXAlignment.Center,
             ZIndex = Bar.ZIndex + 2,
-            Parent = Bar,
+            Parent = Thin and Holder or Bar,
         })
-        New("UIStroke", {
-            ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual,
-            Color = "DarkColor",
-            LineJoinMode = Enum.LineJoinMode.Miter,
-            Parent = DisplayLabel,
-        })
+        if not Thin then
+            New("UIStroke", {
+                ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual,
+                Color = "DarkColor",
+                LineJoinMode = Enum.LineJoinMode.Miter,
+                Parent = DisplayLabel,
+            })
+        end
 
         local InputTextBox
         local InputTextBoxStroke
         if Info.AllowRightClickInput then
             InputTextBox = New("TextBox", {
                 BackgroundTransparency = 1,
-                Size = UDim2.fromScale(1, 1),
+                Size = Thin and UDim2.new(1, 0, 0, 14) or UDim2.fromScale(1, 1),
                 Text = "",
                 TextSize = 14,
+                TextXAlignment = Thin and Enum.TextXAlignment.Right or Enum.TextXAlignment.Center,
                 ZIndex = Bar.ZIndex + 3,
                 Visible = false,
                 ClearTextOnFocus = false,
-                Parent = Bar,
+                Parent = Thin and Holder or Bar,
             })
             InputTextBoxStroke = New("UIStroke", {
                 ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual,
@@ -15440,6 +15458,49 @@ Library:GiveSignal(Players.PlayerRemoving:Connect(OnPlayerChange))
 
 Library:GiveSignal(Teams.ChildAdded:Connect(OnTeamChange))
 Library:GiveSignal(Teams.ChildRemoved:Connect(OnTeamChange))
+
+--// Kyo: rainbow accent (cycles AccentColor, cleaned up by Unload through GiveSignal)
+Library.RainbowAccent = false
+Library.RainbowSpeed = 0.25
+Library.RainbowConnection = nil
+Library.RainbowBaseAccent = nil
+
+function Library:SetRainbowAccent(Enabled: boolean, Speed: number?)
+    Library.RainbowSpeed = Speed or Library.RainbowSpeed
+
+    if Library.Unloaded or Library.RainbowAccent == Enabled then
+        return
+    end
+    Library.RainbowAccent = Enabled
+
+    if Library.RainbowConnection then
+        Library.RainbowConnection:Disconnect()
+        Library.RainbowConnection = nil
+    end
+
+    if not Enabled then
+        if Library.RainbowBaseAccent then
+            Library.Scheme.AccentColor = Library.RainbowBaseAccent
+            Library:UpdateColorsUsingRegistry()
+        end
+        return
+    end
+
+    Library.RainbowBaseAccent = Library.Scheme.AccentColor
+
+    local Elapsed = 0
+    local LastUpdate = 0
+    Library.RainbowConnection = Library:GiveSignal(RunService.RenderStepped:Connect(function(DeltaTime)
+        Elapsed += DeltaTime
+        if Elapsed - LastUpdate < 1 / 30 then
+            return
+        end
+        LastUpdate = Elapsed
+
+        Library.Scheme.AccentColor = Color3.fromHSV((Elapsed * Library.RainbowSpeed) % 1, 0.7, 1)
+        Library:UpdateColorsUsingRegistry()
+    end))
+end
 
 function Library:Unload()
     Library.Unloaded = true

@@ -60,7 +60,7 @@ local ThemeManager = {
         --// Kyo: Sea Hub palette as the Default theme
         ["Default"] = {
             1,
-            { FontColor = "e6e6e6", MainColor = "232323", AccentColor = "83b5ff", BackgroundColor = "1c1c1c", OutlineColor = "323232", BackgroundImage = "" },
+            { FontColor = "e6e6e6", MainColor = "232323", AccentColor = "8f48cf", BackgroundColor = "1c1c1c", OutlineColor = "323232", BackgroundImage = "" },
         },
         ["BBot"] = {
             2,
