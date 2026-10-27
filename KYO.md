@@ -30,6 +30,8 @@ Base snapshot: upstream `bdaa9b8` (first commit of this repo).
 - Favorites: `Favorites = "Key"` in any `AddDropdown`. Right click (or hold a finger for `Library.FavoriteHoldTime`, default 0.6 s, without moving) on an item toggles its star. Favorites are pinned to the top and saved in `<ThemeManager folder>/favorites.json` (`Library:SetFavoritesPath`). Enabled on the theme lists, font lists and the config list. API: `Dropdown:IsFavorite(Value)`, `Dropdown:SetFavorite(Value, Bool)`.
 - Hover tweens on buttons, tabs and key pickers are skipped while the window fades (`Library.WindowFading`), otherwise the hovered element stayed visible until the fade ended.
 
+- Themes: Default plus 8 community themes (Tokyo Ghoul, One Piece, Halloween, Witch Brew, Naruto, Demon Slayer, Jujutsu Kaisen, Chainsaw Man) with their own colors, gradient and header font. They never touch the background image. Built-in themes that do not set fonts go back to GothamMedium / GothamBold.
+
 ## Untouched on purpose
 
 SaveManager, flags (`Options` / `Toggles`), keybinds, mobile handling and the unload/cleanup system. ThemeManager only had its Default theme and font default changed (see below).

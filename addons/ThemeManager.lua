@@ -73,74 +73,107 @@ local ThemeManager = {
         --// Kyo: Sea Hub palette as the Default theme
         ["Default"] = {
             1,
-            { FontColor = "e6e6e6", MainColor = "232323", AccentColor = "8f48cf", BackgroundColor = "1c1c1c", OutlineColor = "323232", BackgroundImage = "", AccentColor2 = "ec4899", AccentGradient = true, HeaderFont = "GothamBold" },
+            { FontColor = "e6e6e6", MainColor = "232323", AccentColor = "8f48cf", BackgroundColor = "1c1c1c", OutlineColor = "323232", BackgroundImage = "", AccentColor2 = "ec4899", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "GothamBold" },
+        },
+        --// Kyo: community themes (colors, gradient and fonts only, the background image is left alone)
+        ["Tokyo Ghoul"] = {
+            2,
+            { FontColor = "f2f2f2", MainColor = "161616", AccentColor = "e5122b", BackgroundColor = "0c0c0c", OutlineColor = "2c2c2c", AccentColor2 = "ff5a6e", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "GrenzeGotisch" },
+        },
+        ["One Piece"] = {
+            3,
+            { FontColor = "fff6df", MainColor = "10223d", AccentColor = "f4b400", BackgroundColor = "0a1628", OutlineColor = "22436b", AccentColor2 = "ff4d5a", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "LuckiestGuy" },
+        },
+        ["Halloween"] = {
+            4,
+            { FontColor = "ffe9d2", MainColor = "18121f", AccentColor = "ff7a00", BackgroundColor = "0e0a13", OutlineColor = "31244a", AccentColor2 = "a45cff", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "Creepster" },
+        },
+        ["Witch Brew"] = {
+            5,
+            { FontColor = "e6ffe9", MainColor = "111d14", AccentColor = "39ff14", BackgroundColor = "09110b", OutlineColor = "23402a", AccentColor2 = "a56bff", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "SpecialElite" },
+        },
+        ["Naruto"] = {
+            6,
+            { FontColor = "f5f5f5", MainColor = "1a1d29", AccentColor = "ff7a18", BackgroundColor = "11131a", OutlineColor = "2c3250", AccentColor2 = "ffd23f", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "PermanentMarker" },
+        },
+        ["Demon Slayer"] = {
+            7,
+            { FontColor = "e8fff4", MainColor = "122019", AccentColor = "2bb673", BackgroundColor = "0a110e", OutlineColor = "1f3a2f", AccentColor2 = "ff4d5e", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "Fondamento" },
+        },
+        ["Jujutsu Kaisen"] = {
+            8,
+            { FontColor = "e8ecff", MainColor = "0f1224", AccentColor = "6b7bff", BackgroundColor = "080a14", OutlineColor = "263059", AccentColor2 = "c04dff", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "Michroma" },
+        },
+        ["Chainsaw Man"] = {
+            9,
+            { FontColor = "fff0e0", MainColor = "1c0d0d", AccentColor = "ff3b1f", BackgroundColor = "120808", OutlineColor = "3d1b1b", AccentColor2 = "ffb000", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "Bangers" },
         },
         ["BBot"] = {
-            2,
+            10,
             { FontColor = "ffffff", MainColor = "1e1e1e", AccentColor = "7e48a3", BackgroundColor = "232323", OutlineColor = "141414", BackgroundImage = "" },
         },
         ["Fatality"] = {
-            3,
+            11,
             { FontColor = "ffffff", MainColor = "1e1842", AccentColor = "c50754", BackgroundColor = "191335", OutlineColor = "3c355d", BackgroundImage = "" },
         },
         ["Jester"] = {
-            4,
+            12,
             { FontColor = "ffffff", MainColor = "242424", AccentColor = "db4467", BackgroundColor = "1c1c1c", OutlineColor = "373737", BackgroundImage = "" },
         },
         ["Mint"] = {
-            5,
+            13,
             { FontColor = "ffffff", MainColor = "242424", AccentColor = "3db488", BackgroundColor = "1c1c1c", OutlineColor = "373737", BackgroundImage = "" },
         },
         ["Tokyo Night"] = {
-            6,
+            14,
             { FontColor = "ffffff", MainColor = "191925", AccentColor = "6759b3", BackgroundColor = "16161f", OutlineColor = "323232", BackgroundImage = "" },
         },
         ["Ubuntu"] = {
-            7,
+            15,
             { FontColor = "ffffff", MainColor = "3e3e3e", AccentColor = "e2581e", BackgroundColor = "323232", OutlineColor = "191919", BackgroundImage = "" },
         },
         ["Quartz"] = {
-            8,
+            16,
             { FontColor = "ffffff", MainColor = "232330", AccentColor = "426e87", BackgroundColor = "1d1b26", OutlineColor = "27232f", BackgroundImage = "" },
         },
         ["Nord"] = {
-            9,
+            17,
             { FontColor = "eceff4", MainColor = "3b4252", AccentColor = "88c0d0", BackgroundColor = "2e3440", OutlineColor = "4c566a", BackgroundImage = "" },
         },
         ["Dracula"] = {
-            10,
+            18,
             { FontColor = "f8f8f2", MainColor = "44475a", AccentColor = "ff79c6", BackgroundColor = "282a36", OutlineColor = "6272a4", BackgroundImage = "" },
         },
         ["Monokai"] = {
-            11,
+            19,
             { FontColor = "f8f8f2", MainColor = "272822", AccentColor = "f92672", BackgroundColor = "1e1f1c", OutlineColor = "49483e", BackgroundImage = "" },
         },
         ["Gruvbox"] = {
-            12,
+            20,
             { FontColor = "ebdbb2", MainColor = "3c3836", AccentColor = "fb4934", BackgroundColor = "282828", OutlineColor = "504945", BackgroundImage = "" },
         },
         ["Solarized"] = {
-            13,
+            21,
             { FontColor = "839496", MainColor = "073642", AccentColor = "cb4b16", BackgroundColor = "002b36", OutlineColor = "586e75", BackgroundImage = "" },
         },
         ["Catppuccin"] = {
-            14,
+            22,
             { FontColor = "d9e0ee", MainColor = "302d41", AccentColor = "f5c2e7", BackgroundColor = "1e1e2e", OutlineColor = "575268", BackgroundImage = "" },
         },
         ["One Dark"] = {
-            15,
+            23,
             { FontColor = "abb2bf", MainColor = "282c34", AccentColor = "c678dd", BackgroundColor = "21252b", OutlineColor = "5c6370", BackgroundImage = "" },
         },
         ["Cyberpunk"] = {
-            16,
+            24,
             { FontColor = "f9f9f9", MainColor = "262335", AccentColor = "00ff9f", BackgroundColor = "1a1a2e", OutlineColor = "413c5e", BackgroundImage = "" },
         },
         ["Oceanic Next"] = {
-            17,
+            25,
             { FontColor = "d8dee9", MainColor = "1b2b34", AccentColor = "6699cc", BackgroundColor = "16232a", OutlineColor = "343d46", BackgroundImage = "" },
         },
         ["Material"] = {
-            18,
+            26,
             { FontColor = "eeffff", MainColor = "212121", AccentColor = "82aaff", BackgroundColor = "151515", OutlineColor = "424242", BackgroundImage = "" },
         }
     }
@@ -757,6 +790,17 @@ function ThemeManager:ApplyTheme(ThemeName: string)
     end
     
     local ThemeData = CustomThemeData or Data[2]
+
+    --// Kyo: built-in themes that do not set fonts / gradient go back to the defaults, so a font from another theme does not stick
+    if not CustomThemeData then
+        ThemeData = table.clone(ThemeData)
+        ThemeData.FontFace = ThemeData.FontFace or "GothamMedium"
+        ThemeData.HeaderFont = ThemeData.HeaderFont or "GothamBold"
+        if ThemeData.AccentGradient == nil then
+            ThemeData.AccentGradient = true
+        end
+    end
+
     return ThemeManager:ApplyThemeData(ThemeData)
 end
 
