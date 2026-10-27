@@ -16,6 +16,14 @@ Base snapshot: upstream `bdaa9b8` (first commit of this repo).
 - Tabs: 34px buttons, outline-colored selected background at 0.5 transparency.
 - Groupbox: accent title and accent underline (`Library:MakeLine` accepts an optional `Color`).
 
+## Fonts, Bold and gradient
+
+- `Library.Scheme.HeaderFont` (default GothamBold) is used by tab labels, groupbox titles and the window title. Body text uses `Library.Scheme.Font`. `Library:SetHeaderFont(Enum.Font.X)` / `Library:SetFont(Enum.Font.X)`.
+- `Bold = true` in the element info uses the header font for that element title (Toggle, Checkbox, Label, Button, SubButton, Slider, Input, Dropdown). `Library:SetBold(TextObject, true)` does the same on any text.
+- ThemeManager: font dropdowns list every `Enum.Font` (searchable), plus "Header Font (Bold)", "Gradient color" and "Accent Gradient". They are saved in themes / theme JSON and ignored by SaveManager configs.
+- Accent gradient (default purple `8f48cf` to pink `ec4899`): `Library:SetGradient(Enabled, Color2)`. Applied to window border and title, groupbox title and line, tab indicator and icons, buttons, slider fill and toggle switch when on. Themes without a second color get an automatic one (`Library:GetAutoGradientColor`). Add it to your own element with `Library:AddGradient(Instance, "BackgroundColor3", Rotation)`, and call `Library:SyncGradient(Instance)` after changing its registry key by hand.
+- Tab icons: `IconColor = Color3` in `AddTab` / `AddKeyTab` (or 5th positional argument, or `Tab:SetIconColor(Color)`) gives that icon its own color with an automatic gradient. Without it the icon follows the accent gradient.
+
 ## Untouched on purpose
 
 SaveManager, flags (`Options` / `Toggles`), keybinds, mobile handling and the unload/cleanup system. ThemeManager only had its Default theme and font default changed (see below).

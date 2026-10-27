@@ -44,6 +44,19 @@ local ContrastRatioOffset = 0.05 --// Offset added to both luminances when compu
 --// Theme Manager
 local SchemeIndexes = { "FontColor", "MainColor", "AccentColor", "BackgroundColor", "OutlineColor" }
 
+--// Kyo: every Roblox font is available for body and header text
+local FontNames = {}
+for _, FontItem in Enum.Font:GetEnumItems() do
+    if FontItem.Name ~= "Unknown" then
+        table.insert(FontNames, FontItem.Name)
+    end
+end
+table.sort(FontNames)
+
+local function IsFontName(Name: any): boolean
+    return typeof(Name) == "string" and table.find(FontNames, Name) ~= nil
+end
+
 local ThemeManager = {
     Library = nil,
 
@@ -60,7 +73,7 @@ local ThemeManager = {
         --// Kyo: Sea Hub palette as the Default theme
         ["Default"] = {
             1,
-            { FontColor = "e6e6e6", MainColor = "232323", AccentColor = "8f48cf", BackgroundColor = "1c1c1c", OutlineColor = "323232", BackgroundImage = "" },
+            { FontColor = "e6e6e6", MainColor = "232323", AccentColor = "8f48cf", BackgroundColor = "1c1c1c", OutlineColor = "323232", BackgroundImage = "", AccentColor2 = "ec4899", AccentGradient = true, HeaderFont = "GothamBold" },
         },
         ["BBot"] = {
             2,
@@ -333,7 +346,10 @@ local function BuildCurrentThemeData(): {[string]: any}
     local Library = ThemeManager.Library
     local ThemeData = {
         FontFace = Library.Options.FontFace.Value,
-        BackgroundImage = Library.Options.BackgroundImage.Value
+        BackgroundImage = Library.Options.BackgroundImage.Value,
+        HeaderFont = Library.Options.HeaderFont.Value, --// Kyo
+        AccentColor2 = Library.Options.AccentColor2.Value:ToHex(),
+        AccentGradient = Library.Options.AccentGradient.Value,
     }
 
     for _, SchemeIndex in SchemeIndexes do
@@ -467,6 +483,19 @@ function ThemeManager:SetDefaultTheme(Theme: any)
         LibraryScheme.Font = Font.fromEnum(Enum.Font.GothamMedium)
         FinalTheme.FontFace = "GothamMedium"
     end
+
+    --// Kyo: header font and accent gradient
+    local HeaderFontName = if IsFontName(Theme.HeaderFont) then Theme.HeaderFont else "GothamBold"
+    LibraryScheme.HeaderFont = Font.fromEnum(Enum.Font[HeaderFontName] :: Enum.Font)
+    FinalTheme.HeaderFont = HeaderFontName
+
+    local SuccessGradient, Color2 = pcall(Color3.fromHex, Theme.AccentColor2 or "ec4899")
+    if not SuccessGradient then
+        Color2 = Color3.fromHex("ec4899")
+    end
+    FinalTheme.AccentColor2 = Color2:ToHex()
+    FinalTheme.AccentGradient = if typeof(Theme.AccentGradient) == "boolean" then Theme.AccentGradient else true
+    Library:SetGradient(FinalTheme.AccentGradient, Color2)
 
     --// Default Scheme Colors
     for _, DefaultSchemeColor in { "RedColor", "DestructiveColor", "DarkColor", "WhiteColor" } do
@@ -650,6 +679,15 @@ function ThemeManager:ApplyThemeData(ThemeData: any): (boolean, string?)
 
     local Library = ThemeManager.Library
 
+    --// Kyo: themes without a second accent get an automatic gradient color
+    if ThemeData.AccentColor2 == nil and typeof(ThemeData.AccentColor) == "string" then
+        local SuccessAccent, AccentColor = pcall(Color3.fromHex, ThemeData.AccentColor)
+        if SuccessAccent then
+            ThemeData = table.clone(ThemeData)
+            ThemeData.AccentColor2 = Library:GetAutoGradientColor(AccentColor):ToHex()
+        end
+    end
+
     for Index, Value in ThemeData do
         if Index == "VideoLink" then
             continue
@@ -659,8 +697,23 @@ function ThemeManager:ApplyThemeData(ThemeData: any): (boolean, string?)
         local FinalValue = Value
 
         if Index == "FontFace" then
-            if typeof(Value) ~= "string" or not Enum.Font[Value] then continue end
+            if not IsFontName(Value) then continue end
             ThemeManager.Library:SetFont(Enum.Font[Value])
+
+        elseif Index == "HeaderFont" then
+            if not IsFontName(Value) then continue end
+            ThemeManager.Library:SetHeaderFont(Enum.Font[Value])
+
+        elseif Index == "AccentColor2" then
+            local SuccessColor, Color = pcall(Color3.fromHex, Value)
+            if not SuccessColor then continue end
+
+            FinalValue = Color
+            ThemeManager.Library:SetGradient(nil, Color)
+
+        elseif Index == "AccentGradient" then
+            if typeof(Value) ~= "boolean" then continue end
+            ThemeManager.Library:SetGradient(Value)
 
         elseif Index == "BackgroundImage" then
             if typeof(Value) ~= "string" then continue end
@@ -811,6 +864,15 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
     local OutlineColor = CreateColorOption("Outline color", "OutlineColor")
     local FontColor = CreateColorOption("Font color", "FontColor")
 
+    --// Kyo: accent gradient
+    Themesbox:AddLabel("Gradient color"):AddColorPicker("AccentColor2", {
+        Default = ThemeManager.Library.Gradient.Color2
+    })
+    Themesbox:AddToggle("AccentGradient", {
+        Text = "Accent Gradient",
+        Default = ThemeManager.Library.Gradient.Enabled,
+    })
+
     --// Accessibility: live contrast readout for the colors above
     ThemeManager.ContrastLabel = Themesbox:AddLabel({
         Text = "Contrast check: n/a",
@@ -821,7 +883,17 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
         Text = "Font Face",
         Default = "GothamMedium",
 
-        Values = { "BuilderSans", "Code", "Fantasy", "Gotham", "GothamBold", "GothamMedium", "Jura", "Roboto", "RobotoMono", "SourceSans" },
+        Values = FontNames,
+        Searchable = true,
+        AllowNull = false,
+        Multi = false
+    })
+    Themesbox:AddDropdown("HeaderFont", {
+        Text = "Header Font (Bold)",
+        Default = "GothamBold",
+
+        Values = FontNames,
+        Searchable = true,
         AllowNull = false,
         Multi = false
     })
@@ -1140,6 +1212,9 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
     OutlineColor:OnChanged(UpdateTheme)
     FontColor:OnChanged(UpdateTheme)
     FontFace:OnChanged(function(Value) ThemeManager.Library:SetFont(Enum.Font[Value]) end)
+    ThemeManager.Library.Options.HeaderFont:OnChanged(function(Value) ThemeManager.Library:SetHeaderFont(Enum.Font[Value]) end)
+    ThemeManager.Library.Options.AccentColor2:OnChanged(function(Value) ThemeManager.Library:SetGradient(nil, Value) end)
+    ThemeManager.Library.Options.AccentGradient:OnChanged(function(Value) ThemeManager.Library:SetGradient(Value) end)
     BackgroundImage:OnChanged(function(Value) ThemeManager.Library:SetBackgroundImage(Value) end)
 
     --// Load default

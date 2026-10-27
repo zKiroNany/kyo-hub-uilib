@@ -284,6 +284,7 @@ local Library = {
         OutlineColor = Color3.fromRGB(50, 50, 50),
         FontColor = Color3.fromRGB(230, 230, 230),
         Font = Font.fromEnum(Enum.Font.GothamMedium),
+        HeaderFont = Font.fromEnum(Enum.Font.GothamBold), --// Kyo: headers (tabs, groupbox titles) and Bold = true elements
 
         RedColor = Color3.fromRGB(255, 50, 50),
         DestructiveColor = Color3.fromRGB(220, 38, 38),
@@ -1460,6 +1461,122 @@ function Library:UpdateColorsUsingRegistry()
                 Instance[Property] = SchemeValue or Index()
             end
         end
+    end
+
+    Library:UpdateGradients() --// Kyo
+end
+
+--// Kyo: accent gradient (default purple to pink)
+Library.Gradient = {
+    Enabled = true,
+    Color2 = Color3.fromRGB(236, 72, 153),
+}
+local GradientTargets = setmetatable({}, { __mode = "k" })
+
+local function GradientWhite()
+    return Color3.new(1, 1, 1)
+end
+
+function Library:GetAutoGradientColor(Color: Color3): Color3
+    local Hue, Saturation, Value = Color:ToHSV()
+    return Color3.fromHSV((Hue + 0.09) % 1, math.clamp(Saturation - 0.1, 0, 1), math.min(Value + 0.2, 1))
+end
+
+function Library:GetGradientColors(): (Color3, Color3)
+    local Color1 = Library.Scheme.AccentColor
+    local Color2 = Library.Gradient.Color2
+    if Library.RainbowAccent or not Color2 then
+        Color2 = Library:GetAutoGradientColor(Color1)
+    end
+
+    return Color1, Color2
+end
+
+function Library:SyncGradient(Object: Instance)
+    local Target = GradientTargets[Object]
+    local Props = Library.Registry[Object]
+    if not Target or not Props then
+        return
+    end
+
+    local Current = Props[Target.Property]
+    local Active = Library.Gradient.Enabled and (Current == Target.Key or Current == GradientWhite)
+
+    Target.Gradient.Enabled = Active
+    if Active then
+        local Color1, Color2 = Library:GetGradientColors()
+        Target.Gradient.Color = ColorSequence.new(Color1, Color2)
+
+        Props[Target.Property] = GradientWhite
+        Object[Target.Property] = Color3.new(1, 1, 1)
+    elseif Current == GradientWhite then
+        Props[Target.Property] = Target.Key
+        Object[Target.Property] = Library.Scheme[Target.Key]
+    end
+end
+
+--// Property must be registered with a scheme key (default AccentColor); call SyncGradient again after changing it manually
+function Library:AddGradient(Object: Instance, Property: string, Rotation: number?, Key: string?)
+    local Gradient = Instance.new("UIGradient")
+    Gradient.Name = "KyoGradient"
+    Gradient.Rotation = Rotation or 0
+    Gradient.Enabled = false
+    Gradient.Parent = Object
+
+    GradientTargets[Object] = {
+        Gradient = Gradient,
+        Property = Property,
+        Key = Key or "AccentColor",
+    }
+    Library:SyncGradient(Object)
+
+    return Gradient
+end
+
+function Library:UpdateGradients()
+    for Object in GradientTargets do
+        Library:SyncGradient(Object)
+    end
+end
+
+function Library:SetGradient(Enabled: boolean?, Color2: Color3?)
+    if typeof(Enabled) == "boolean" then
+        Library.Gradient.Enabled = Enabled
+    end
+    if typeof(Color2) == "Color3" then
+        Library.Gradient.Color2 = Color2
+    end
+
+    Library:UpdateGradients()
+end
+
+--// Kyo: fixed color icon with an automatic gradient made from it
+function Library:SetIconColor(Icon: ImageLabel, Color: Color3)
+    Icon.ImageColor3 = Color3.new(1, 1, 1)
+    if Library.Registry[Icon] then
+        Library.Registry[Icon].ImageColor3 = "WhiteColor"
+    end
+
+    local Gradient = Icon:FindFirstChild("KyoGradient")
+    if not Gradient then
+        Gradient = Instance.new("UIGradient")
+        Gradient.Name = "KyoGradient"
+        Gradient.Rotation = 45
+        Gradient.Parent = Icon
+    end
+    Gradient.Enabled = true
+    Gradient.Color = ColorSequence.new(Color, Library:GetAutoGradientColor(Color))
+end
+
+--// Kyo: Bold = true uses the header font
+function Library:SetBold(Object: TextLabel | TextButton | TextBox, Bold: boolean?)
+    if not Object then
+        return
+    end
+
+    Object.FontFace = Bold and Library.Scheme.HeaderFont or Library.Scheme.Font
+    if Library.Registry[Object] then
+        Library.Registry[Object].FontFace = Bold and "HeaderFont" or "Font"
     end
 end
 
@@ -6510,6 +6627,7 @@ do
             Data.Text = Params.Text or ""
             Data.DoesWrap = Params.DoesWrap or false
             Data.Size = Params.Size or 14
+            Data.Bold = Params.Bold or false
             Data.Visible = if typeof(Params.Visible) == "boolean" then Params.Visible else true
             Data.Idx = typeof(Second) == "table" and First or nil
         else
@@ -6548,6 +6666,9 @@ do
             Visible = Label.Visible,
             Parent = Container,
         })
+        if Data.Bold then
+            Library:SetBold(TextLabel, true) --// Kyo
+        end
 
         function Label:Display()
             if not Label.DoesWrap then
@@ -6675,6 +6796,7 @@ do
                 Info.Func = Params.Func or Params.Callback or function() end
                 Info.DoubleClick = Params.DoubleClick
                 Info.Icon = Params.Icon or Params.IconName
+                Info.Bold = Params.Bold or false
 
                 Info.Tooltip = Params.Tooltip
                 Info.DisabledTooltip = Params.DisabledTooltip
@@ -6713,6 +6835,7 @@ do
             Func = Info.Func,
             DoubleClick = Info.DoubleClick,
             Icon = Info.Icon,
+            Bold = Info.Bold,
 
             Tooltip = Info.Tooltip,
             DisabledTooltip = Info.DisabledTooltip,
@@ -6789,6 +6912,7 @@ do
                 Visible = Button.Visible,
                 Parent = Holder,
             })
+            Library:AddGradient(Base, "BackgroundColor3", 0)
 
             local Stroke = New("UIStroke", {
                 Color = "OutlineColor",
@@ -6837,6 +6961,10 @@ do
                 TextTransparency = Button.Disabled and 0.8 or 0,
                 Parent = Content,
             })
+
+            if Button.Bold then
+                Library:SetBold(Button.Label, true) --// Kyo
+            end
 
             if Button.Risky then
                 Button.Label.TextColor3 = Library.Scheme.RedColor
@@ -6937,6 +7065,7 @@ do
                 Func = Info.Func,
                 DoubleClick = Info.DoubleClick,
                 Icon = Info.Icon,
+                Bold = Info.Bold,
 
                 Tooltip = Info.Tooltip,
                 DisabledTooltip = Info.DisabledTooltip,
@@ -6980,6 +7109,7 @@ do
 
                 Library.Registry[SubButton.Base].BackgroundColor3 = SubButton.Disabled and "BackgroundColor"
                     or "AccentColor"
+                Library:SyncGradient(SubButton.Base)
             end
 
             function SubButton:SetDisabled(Disabled: boolean)
@@ -7080,6 +7210,7 @@ do
             end
 
             Library.Registry[Button.Base].BackgroundColor3 = Button.Disabled and "BackgroundColor" or "AccentColor"
+            Library:SyncGradient(Button.Base)
         end
 
         function Button:SetDisabled(Disabled: boolean)
@@ -7230,6 +7361,9 @@ do
             TextXAlignment = Enum.TextXAlignment.Left,
             Parent = Button,
         })
+        if Info.Bold then
+            Library:SetBold(Label, true) --// Kyo
+        end
 
         New("UIListLayout", {
             FillDirection = Enum.FillDirection.Horizontal,
@@ -7487,6 +7621,9 @@ do
             TextXAlignment = Enum.TextXAlignment.Left,
             Parent = Button,
         })
+        if Info.Bold then
+            Library:SetBold(Label, true) --// Kyo
+        end
 
         New("UIListLayout", {
             FillDirection = Enum.FillDirection.Horizontal,
@@ -7517,6 +7654,7 @@ do
             Color = "OutlineColor",
             Parent = Switch,
         })
+        Library:AddGradient(Switch, "BackgroundColor3", 0)
 
         local Ball = New("Frame", {
             BackgroundColor3 = "FontColor",
@@ -7547,6 +7685,7 @@ do
             SwitchStroke.Color = Toggle.Value and Library.Scheme.AccentColor or Library.Scheme.OutlineColor
 
             Library.Registry[Switch].BackgroundColor3 = Toggle.Value and "AccentColor" or "MainColor"
+            Library:SyncGradient(Switch)
             Library.Registry[SwitchStroke].Color = Toggle.Value and "AccentColor" or "OutlineColor"
 
             if Toggle.Disabled then
@@ -7760,6 +7899,9 @@ do
             TextXAlignment = Enum.TextXAlignment.Left,
             Parent = Holder,
         })
+        if Info.Bold then
+            Library:SetBold(Label, true) --// Kyo
+        end
 
         local Box = New("TextBox", {
             AnchorPoint = Vector2.new(0, 1),
@@ -8019,6 +8161,9 @@ do
                 TextXAlignment = Enum.TextXAlignment.Left,
                 Parent = Holder,
             })
+            if Info.Bold then
+                Library:SetBold(SliderLabel, true) --// Kyo
+            end
         end
 
         local Bar = New("TextButton", {
@@ -8088,6 +8233,7 @@ do
             ZIndex = Bar.ZIndex + 1,
             Parent = Bar,
         })
+        Library:AddGradient(Fill, "BackgroundColor3", 0)
 
         table.insert(
             Library.Corners,
@@ -8121,6 +8267,7 @@ do
 
             Fill.BackgroundColor3 = Slider.Disabled and Library.Scheme.OutlineColor or Library.Scheme.AccentColor
             Library.Registry[Fill].BackgroundColor3 = Slider.Disabled and "OutlineColor" or "AccentColor"
+            Library:SyncGradient(Fill)
         end
 
         function Slider:Display()
@@ -8488,6 +8635,9 @@ do
             ZIndex = 3,
             Parent = Holder,
         })
+        if Info.Bold then
+            Library:SetBold(Label, true) --// Kyo
+        end
 
         local DisplayContainer = New("TextButton", {
             AnchorPoint = Vector2.new(0, 1),
@@ -10596,6 +10746,19 @@ function Library:SetFont(FontFace)
     end
 end
 
+function Library:SetHeaderFont(FontFace)
+    if typeof(FontFace) == "EnumItem" then
+        FontFace = Font.fromEnum(FontFace :: any)
+    end
+
+    Library.Scheme.HeaderFont = FontFace
+    Library:UpdateColorsUsingRegistry()
+
+    if Library.Window and Library.Window.RefreshTitleSize then
+        Library.Window:RefreshTitleSize()
+    end
+end
+
 function Library:SetBackgroundImage(Image: string | number)
     assert(typeof(Image) == "string" or typeof(Image) == "number", "Expected string/number got " .. typeof(Image))
 
@@ -11434,6 +11597,7 @@ function Library:CreateWindow(WindowInfo)
         WindowOutline.Thickness = 1.2
         WindowOutline.Color = Library.Scheme.AccentColor
         Library.Registry[WindowOutline].Color = "AccentColor"
+        Library:AddGradient(WindowOutline, "Color", 0)
 
         Library:MakeLine(MainFrame, {
             Position = UDim2.fromOffset(0, 48),
@@ -11552,6 +11716,7 @@ function Library:CreateWindow(WindowInfo)
             BackgroundTransparency = 1,
             Size = UDim2.fromOffset(0, 0),
             Text = WindowInfo.Title,
+            FontFace = "HeaderFont",
             TextColor3 = "AccentColor",
             TextSize = 17,
             TextTruncate = Enum.TextTruncate.AtEnd,
@@ -11559,6 +11724,7 @@ function Library:CreateWindow(WindowInfo)
             TextYAlignment = Enum.TextYAlignment.Center,
             Parent = TitleHolder,
         })
+        Library:AddGradient(WindowTitle, "TextColor3", 0)
 
         RefreshWindowTitleSize = function()
             local IconWidth = 0
@@ -11567,7 +11733,7 @@ function Library:CreateWindow(WindowInfo)
             end
 
             local MaxWidth = math.max(0, (TitleHolder.AbsoluteSize.X / Library.DPIScale) - IconWidth - 12)
-            local NaturalWidth = Library:GetTextBounds(WindowTitle.Text, Library.Scheme.Font, WindowTitle.TextSize)
+            local NaturalWidth = Library:GetTextBounds(WindowTitle.Text, Library.Scheme.HeaderFont, WindowTitle.TextSize)
             WindowTitle.Size = UDim2.new(0, math.min(NaturalWidth, MaxWidth), 1, 0)
         end
         RefreshWindowTitleSize()
@@ -12156,6 +12322,7 @@ function Library:CreateWindow(WindowInfo)
     function Window:AddTab(...)
         local Name = nil
         local Icon = nil
+        local IconColor = nil --// Kyo: Color3 for this tab icon
         local Description = nil
         local Tooltip = nil
         local Order = nil
@@ -12164,6 +12331,7 @@ function Library:CreateWindow(WindowInfo)
             local Info = select(1, ...)
             Name = Info.Name or "Tab"
             Icon = Info.Icon
+            IconColor = Info.IconColor
             Description = Info.Description
             Tooltip = Info.Tooltip
             Order = Info.Order
@@ -12172,6 +12340,7 @@ function Library:CreateWindow(WindowInfo)
             Icon = select(2, ...)
             Description = select(3, ...)
             Order = select(4, ...)
+            IconColor = select(5, ...)
         end
 
         if not tonumber(Order) then
@@ -12216,6 +12385,7 @@ function Library:CreateWindow(WindowInfo)
                     CornerRadius = UDim.new(1, 0),
                     Parent = TabIndicator,
                 })
+                Library:AddGradient(TabIndicator, "BackgroundColor3", 90) --// Kyo
             end
 
             local ButtonHolder = New("Frame", {
@@ -12235,6 +12405,7 @@ function Library:CreateWindow(WindowInfo)
                 Position = UDim2.fromOffset(30, 0),
                 Size = UDim2.new(1, -30, 1, 0),
                 Text = Name,
+                FontFace = "HeaderFont", --// Kyo
                 TextSize = 14,
                 TextTransparency = 0.5,
                 TextXAlignment = Enum.TextXAlignment.Left,
@@ -12252,6 +12423,15 @@ function Library:CreateWindow(WindowInfo)
                     Parent = ButtonHolder,
                 })
                 Library:ApplyLucideIcon(TabIcon, Icon)
+
+                --// Kyo: own color with automatic gradient, otherwise the accent gradient
+                if not Icon.Custom then
+                    if IconColor then
+                        Library:SetIconColor(TabIcon, IconColor)
+                    else
+                        Library:AddGradient(TabIcon, "ImageColor3", 45)
+                    end
+                end
             end
 
             table.insert(Library.TabButtons, {
@@ -13043,12 +13223,14 @@ function Library:CreateWindow(WindowInfo)
                     BackgroundTransparency = 1,
                     Size = UDim2.fromScale(1, 0),
                     Text = Info.Name,
+                    FontFace = "HeaderFont",
                     TextColor3 = "AccentColor",
                     TextSize = 14,
                     TextWrapped = true,
                     TextXAlignment = Enum.TextXAlignment.Left,
                     Parent = TextsFrame,
                 })
+                Library:AddGradient(GroupboxLabel, "TextColor3", 0)
                 New("UIPadding", {
                     PaddingBottom = UDim.new(0, 1),
                     Parent = GroupboxLabel,
@@ -13086,6 +13268,7 @@ function Library:CreateWindow(WindowInfo)
                     LayoutOrder = 1,
                     Size = UDim2.new(1, 0, 0, 1),
                 })
+                Library:AddGradient(GroupboxLine, "BackgroundColor3", 0)
 
                 GroupboxContainer = New("ScrollingFrame", {
                     AutomaticCanvasSize = Enum.AutomaticSize.None,
@@ -13368,6 +13551,12 @@ function Library:CreateWindow(WindowInfo)
             return Tab:AddGroupbox({ Side = 2, Name = Name, IconName = IconName, Visible = Visible, Collapsed = Collapsed, DisableCollapsing = DisableCollapsing })
         end
 
+        function Tab:SetIconColor(Color: Color3)
+            if TabIcon then
+                Library:SetIconColor(TabIcon, Color)
+            end
+        end
+
         function Tab:Hover(Hovering)
             if Library.ActiveTab == Tab then
                 return
@@ -13554,6 +13743,7 @@ function Library:CreateWindow(WindowInfo)
     function Window:AddKeyTab(...)
         local Name = nil
         local Icon = nil
+        local IconColor = nil --// Kyo
         local Description = nil
         local Tooltip = nil
         local Order = nil
@@ -13562,6 +13752,7 @@ function Library:CreateWindow(WindowInfo)
             local Info = select(1, ...)
             Name = Info.Name or "Tab"
             Icon = Info.Icon
+            IconColor = Info.IconColor
             Description = Info.Description
             Tooltip = Info.Tooltip
             Order = Info.Order
@@ -13570,6 +13761,7 @@ function Library:CreateWindow(WindowInfo)
             Icon = select(2, ...)
             Description = select(3, ...)
             Order = select(4, ...)
+            IconColor = select(5, ...)
         end
 
         if not tonumber(Order) then
@@ -13614,6 +13806,7 @@ function Library:CreateWindow(WindowInfo)
                     CornerRadius = UDim.new(1, 0),
                     Parent = TabIndicator,
                 })
+                Library:AddGradient(TabIndicator, "BackgroundColor3", 90) --// Kyo
             end
 
             local ButtonHolder = New("Frame", {
@@ -13634,6 +13827,7 @@ function Library:CreateWindow(WindowInfo)
                 Position = UDim2.fromOffset(30, 0),
                 Size = UDim2.new(1, -30, 1, 0),
                 Text = Name,
+                FontFace = "HeaderFont", --// Kyo
                 TextSize = 14,
                 TextTransparency = 0.5,
                 TextXAlignment = Enum.TextXAlignment.Left,
@@ -13651,6 +13845,15 @@ function Library:CreateWindow(WindowInfo)
                     Parent = ButtonHolder,
                 })
                 Library:ApplyLucideIcon(TabIcon, Icon)
+
+                --// Kyo: own color with automatic gradient, otherwise the accent gradient
+                if not Icon.Custom then
+                    if IconColor then
+                        Library:SetIconColor(TabIcon, IconColor)
+                    else
+                        Library:AddGradient(TabIcon, "ImageColor3", 45)
+                    end
+                end
             end
 
             table.insert(Library.TabButtons, {

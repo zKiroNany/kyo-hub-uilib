@@ -40,9 +40,11 @@ local Window = Library:CreateWindow({
 -- You can find more icons in https://lucide.dev/
 local Tabs = {
 	-- Creates a new tab titled Main
-	Main = Window:AddTab("Main", "user"),
-	Key = Window:AddKeyTab("Key System"),
-	["UI Settings"] = Window:AddTab("UI Settings", "settings"),
+	-- IconColor is optional: each tab icon gets its own color with an automatic gradient
+	-- (without IconColor the icon follows the accent gradient)
+	Main = Window:AddTab({ Name = "Main", Icon = "user", IconColor = Color3.fromRGB(255, 140, 0) }),
+	Key = Window:AddKeyTab({ Name = "Key System", IconColor = Color3.fromRGB(255, 200, 60) }),
+	["UI Settings"] = Window:AddTab({ Name = "UI Settings", Icon = "settings", IconColor = Color3.fromRGB(143, 72, 207) }),
 }
 
 
@@ -95,6 +97,7 @@ LeftGroupBox:AddToggle("MyToggle", {
 	Disabled = false, -- Will disable the toggle (true / false)
 	Visible = true, -- Will make the toggle invisible (true / false)
 	Risky = false, -- Makes the text red (the color can be changed using Library.Scheme.Red) (Default value = false)
+	Bold = true, -- Uses the header font (Library.Scheme.HeaderFont) for the title. Works on toggles, labels, buttons, sliders, inputs and dropdowns (Default value = false)
 
 	Callback = function(Value)
 		print("[cb] MyToggle changed to:", Value)
