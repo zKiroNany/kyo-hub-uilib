@@ -25,7 +25,8 @@ local Window = Library:CreateWindow({
 	-- but you do not need to define them unless you are changing them :)
 
 	Title = "Kyo Hub",
-	Footer = "version: example",
+	Footer = "discord.gg/kyohub",
+	Icon = 95751314522091,
 	NotifySide = "Right",
 	ShowCustomCursor = true,
 })
