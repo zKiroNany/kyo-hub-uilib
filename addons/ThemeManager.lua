@@ -57,9 +57,10 @@ local ThemeManager = {
     ContrastWasPoor = false,
 
     BuiltInThemes = {
+        --// Kyo: Sea Hub palette as the Default theme
         ["Default"] = {
             1,
-            { FontColor = "ffffff", MainColor = "191919", AccentColor = "7d55ff", BackgroundColor = "0f0f0f", OutlineColor = "282828", BackgroundImage = "" },
+            { FontColor = "e6e6e6", MainColor = "232323", AccentColor = "83b5ff", BackgroundColor = "1c1c1c", OutlineColor = "323232", BackgroundImage = "" },
         },
         ["BBot"] = {
             2,
@@ -463,8 +464,8 @@ function ThemeManager:SetDefaultTheme(Theme: any)
         FinalTheme.FontFace = FontFace
     
     else
-        LibraryScheme.Font = Font.fromEnum(Enum.Font.Code)
-        FinalTheme.FontFace = "Code"
+        LibraryScheme.Font = Font.fromEnum(Enum.Font.GothamMedium)
+        FinalTheme.FontFace = "GothamMedium"
     end
 
     --// Default Scheme Colors
@@ -818,9 +819,9 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
 
     Themesbox:AddDropdown("FontFace", {
         Text = "Font Face",
-        Default = "Code",
-        
-        Values = { "BuilderSans", "Code", "Fantasy", "Gotham", "Jura", "Roboto", "RobotoMono", "SourceSans" },
+        Default = "GothamMedium",
+
+        Values = { "BuilderSans", "Code", "Fantasy", "Gotham", "GothamBold", "GothamMedium", "Jura", "Roboto", "RobotoMono", "SourceSans" },
         AllowNull = false,
         Multi = false
     })

@@ -16,3 +16,9 @@ Base snapshot: upstream `bdaa9b8` (first commit of this repo).
 ## Untouched on purpose
 
 SaveManager, ThemeManager, flags (`Options` / `Toggles`), keybinds, mobile handling and the unload/cleanup system.
+
+## Loading the fork
+
+`Example.lua` and the asset downloader (`BaseURL` in `Library.lua`) point at this repo. Always load `Library.lua`, `addons/ThemeManager.lua` and `addons/SaveManager.lua` from the same Kyo URL: the upstream `ThemeManager` would overwrite the skin with its own Default theme.
+
+`addons/ThemeManager.lua`: the `Default` built-in theme uses the Sea Hub palette and the font dropdown defaults to GothamMedium.

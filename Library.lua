@@ -29,7 +29,8 @@ local Toggles = {}
 local Options = {}
 local Tooltips = {}
 
-local BaseURL = "https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/"
+--// Kyo: assets are served from the Kyo fork
+local BaseURL = "https://raw.githubusercontent.com/zKiroNany/kyo-hub-uilib/refs/heads/main/"
 local CustomImageManager = {}
 local CustomImageManagerAssets = {
     TransparencyTexture = {
@@ -473,7 +474,7 @@ local Templates = {
         FooterButtons = {}
     },
     Loading = {
-        Title = "mspaint",
+        Title = "Kyo Hub",
         Icon = 95816097006870,
         IconSize = UDim2.fromOffset(30, 30),
 
