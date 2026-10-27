@@ -112,7 +112,350 @@ do
         return false, "unsupported image format, use PNG or JPG"
     end
 
-    --// Kyo: animated backgrounds use .webm / .mp4 (Roblox does not animate GIF)
+    --// Kyo: some hosts block hotlinking, so retry with a Referer
+    local function Fetch(Url: string)
+        local Success, Body = pcall(game.HttpGet, game, Url)
+        if Success and typeof(Body) == "string" and #Body > 0 then
+            return Body
+        end
+
+        local Request = (syn and syn.request) or request or http_request
+        if Request then
+            local Origin = Url:match("^(https?://[^/]+)") or Url
+            local RequestSuccess, Response = pcall(Request, {
+                Url = Url,
+                Method = "GET",
+                Headers = {
+                    ["Referer"] = Origin .. "/",
+                    ["User-Agent"] = "Mozilla/5.0",
+                },
+            })
+
+            if RequestSuccess and typeof(Response) == "table" and Response.StatusCode == 200 and Response.Body then
+                return Response.Body
+            end
+
+            return nil, "HTTP " .. tostring(RequestSuccess and Response and Response.StatusCode or "error")
+        end
+
+        return nil, tostring(Body)
+    end
+    CustomImageManager.Fetch = Fetch
+
+    --// Kyo: GifDecoder: decodes every frame of a GIF into fully composited RGBA buffers.
+    --// Returns { Width, Height, Frames = { { Buffer = buffer, Delay = seconds } } } or nil, error.
+    local function DecodeGif(Data, Options)
+        Options = Options or {}
+        local MaxBytes = Options.MaxBytes or (128 * 1024 * 1024)
+        local Yield = Options.Yield
+
+        local Byte = string.byte
+        local Sub = string.sub
+        local lshift = bit32.lshift
+        local rshift = bit32.rshift
+        local band = bit32.band
+
+        if #Data < 13 or (Sub(Data, 1, 6) ~= "GIF87a" and Sub(Data, 1, 6) ~= "GIF89a") then
+            return nil, "not a GIF file"
+        end
+
+        local Width = Byte(Data, 7) + Byte(Data, 8) * 256
+        local Height = Byte(Data, 9) + Byte(Data, 10) * 256
+        if Width < 1 or Height < 1 then
+            return nil, "invalid GIF size"
+        end
+        if Width > 1024 or Height > 1024 then
+            return nil, string.format("GIF is too large (%dx%d, max 1024x1024)", Width, Height)
+        end
+
+        local Flags = Byte(Data, 11)
+        local Pos = 14
+
+        local GlobalPalette = nil
+        if Flags >= 128 then
+            local Size = 2 ^ ((Flags % 8) + 1)
+            GlobalPalette = {}
+            for Index = 0, Size - 1 do
+                local Base = Pos + Index * 3
+                GlobalPalette[Index] = Byte(Data, Base) + Byte(Data, Base + 1) * 256 + Byte(Data, Base + 2) * 65536 + 4278190080
+            end
+            Pos = Pos + Size * 3
+        end
+
+        local FrameBytes = Width * Height * 4
+        local Canvas = buffer.create(FrameBytes)
+        local Saved = nil
+        local Frames = {}
+        local Total = 0
+
+        local Delay = 0.1
+        local Disposal = 0
+        local TransparentIndex = -1
+
+        --// LZW tables
+        local Prefix, Suffix, Length, FirstByte = {}, {}, {}, {}
+        for Index = 0, 4095 do
+            Prefix[Index] = 0
+            Suffix[Index] = Index % 256
+            Length[Index] = 1
+            FirstByte[Index] = Index % 256
+        end
+
+        local PreviousRect = nil
+        local PreviousDisposal = 0
+
+        local DataLength = #Data
+        while Pos <= DataLength do
+            local Block = Byte(Data, Pos)
+
+            if Block == 0x3B then
+                break
+            elseif Block == 0x21 then
+                local Label = Byte(Data, Pos + 1)
+                Pos = Pos + 2
+
+                if Label == 0xF9 then
+                    local Packed = Byte(Data, Pos + 1)
+                    Disposal = math.floor(Packed / 4) % 8
+                    Delay = (Byte(Data, Pos + 2) + Byte(Data, Pos + 3) * 256) / 100
+                    if Delay < 0.02 then
+                        Delay = 0.1
+                    end
+                    TransparentIndex = (Packed % 2 == 1) and Byte(Data, Pos + 4) or -1
+                end
+
+                --// skip sub blocks
+                while Pos <= DataLength do
+                    local Size = Byte(Data, Pos)
+                    Pos = Pos + 1 + Size
+                    if Size == 0 then
+                        break
+                    end
+                end
+            elseif Block == 0x2C then
+                local Left = Byte(Data, Pos + 1) + Byte(Data, Pos + 2) * 256
+                local Top = Byte(Data, Pos + 3) + Byte(Data, Pos + 4) * 256
+                local FrameWidth = Byte(Data, Pos + 5) + Byte(Data, Pos + 6) * 256
+                local FrameHeight = Byte(Data, Pos + 7) + Byte(Data, Pos + 8) * 256
+                local FrameFlags = Byte(Data, Pos + 9)
+                Pos = Pos + 10
+
+                local Palette = GlobalPalette
+                if FrameFlags >= 128 then
+                    local Size = 2 ^ ((FrameFlags % 8) + 1)
+                    Palette = {}
+                    for Index = 0, Size - 1 do
+                        local Base = Pos + Index * 3
+                        Palette[Index] = Byte(Data, Base) + Byte(Data, Base + 1) * 256 + Byte(Data, Base + 2) * 65536 + 4278190080
+                    end
+                    Pos = Pos + Size * 3
+                end
+                local Interlaced = math.floor(FrameFlags / 64) % 2 == 1
+
+                local MinSize = Byte(Data, Pos)
+                Pos = Pos + 1
+
+                --// collect LZW data
+                local Chunks = {}
+                while Pos <= DataLength do
+                    local Size = Byte(Data, Pos)
+                    if Size == 0 then
+                        Pos = Pos + 1
+                        break
+                    end
+                    Chunks[#Chunks + 1] = Sub(Data, Pos + 1, Pos + Size)
+                    Pos = Pos + 1 + Size
+                end
+                local Lzw = table.concat(Chunks)
+
+                if Palette == nil then
+                    return nil, "GIF has no color table"
+                end
+                if MinSize < 2 or MinSize > 8 then
+                    return nil, "invalid GIF data"
+                end
+
+                --// decode indices
+                local PixelCount = FrameWidth * FrameHeight
+                local Indices = buffer.create(PixelCount)
+
+                local ClearCode = lshift(1, MinSize)
+                local EndCode = ClearCode + 1
+                local CodeSize = MinSize + 1
+                local Mask = lshift(1, CodeSize) - 1
+                local Boundary = lshift(1, CodeSize)
+                local NextCode = EndCode + 1
+                local Previous = -1
+
+                local BitBuffer = 0
+                local BitCount = 0
+                local ReadPos = 1
+                local LzwLength = #Lzw
+                local Out = 0
+
+                while Out < PixelCount do
+                    while BitCount < CodeSize do
+                        if ReadPos > LzwLength then
+                            break
+                        end
+                        BitBuffer = BitBuffer + lshift(Byte(Lzw, ReadPos), BitCount)
+                        ReadPos = ReadPos + 1
+                        BitCount = BitCount + 8
+                    end
+                    if BitCount < CodeSize then
+                        break
+                    end
+
+                    local Code = band(BitBuffer, Mask)
+                    BitBuffer = rshift(BitBuffer, CodeSize)
+                    BitCount = BitCount - CodeSize
+
+                    if Code == EndCode then
+                        break
+                    elseif Code == ClearCode then
+                        CodeSize = MinSize + 1
+                        Mask = lshift(1, CodeSize) - 1
+                        Boundary = lshift(1, CodeSize)
+                        NextCode = EndCode + 1
+                        Previous = -1
+                    elseif Previous == -1 then
+                        if Code >= ClearCode then
+                            break
+                        end
+                        buffer.writeu8(Indices, Out, Code)
+                        Out = Out + 1
+                        Previous = Code
+                    else
+                        local NewSuffix
+                        if Code < NextCode then
+                            NewSuffix = FirstByte[Code]
+                        else
+                            NewSuffix = FirstByte[Previous]
+                        end
+
+                        if NextCode < 4096 then
+                            Prefix[NextCode] = Previous
+                            Suffix[NextCode] = NewSuffix
+                            Length[NextCode] = Length[Previous] + 1
+                            FirstByte[NextCode] = FirstByte[Previous]
+                            NextCode = NextCode + 1
+                            if NextCode == Boundary and CodeSize < 12 then
+                                CodeSize = CodeSize + 1
+                                Mask = lshift(1, CodeSize) - 1
+                                Boundary = lshift(1, CodeSize)
+                            end
+                        end
+
+                        if Code >= NextCode then
+                            break
+                        end
+
+                        local StringLength = Length[Code]
+                        local Cursor = Code
+                        for Offset = StringLength - 1, 0, -1 do
+                            local Target = Out + Offset
+                            if Target < PixelCount then
+                                buffer.writeu8(Indices, Target, Suffix[Cursor])
+                            end
+                            Cursor = Prefix[Cursor]
+                        end
+                        Out = Out + StringLength
+                        Previous = Code
+                    end
+                end
+
+                --// dispose the previous frame
+                if PreviousDisposal == 2 and PreviousRect then
+                    for Y = PreviousRect[2], PreviousRect[2] + PreviousRect[4] - 1 do
+                        if Y >= 0 and Y < Height then
+                            local FromX = math.max(PreviousRect[1], 0)
+                            local ToX = math.min(PreviousRect[1] + PreviousRect[3], Width)
+                            if ToX > FromX then
+                                buffer.fill(Canvas, (Y * Width + FromX) * 4, 0, (ToX - FromX) * 4)
+                            end
+                        end
+                    end
+                elseif PreviousDisposal == 3 and Saved then
+                    buffer.copy(Canvas, 0, Saved, 0, FrameBytes)
+                end
+
+                if Disposal == 3 then
+                    Saved = Saved or buffer.create(FrameBytes)
+                    buffer.copy(Saved, 0, Canvas, 0, FrameBytes)
+                end
+
+                --// draw
+                for Row = 0, FrameHeight - 1 do
+                    local SourceRow = Row
+                    if Interlaced then
+                        local Quarter = math.floor((FrameHeight + 7) / 8)
+                        local Half = Quarter + math.floor((FrameHeight + 3) / 8)
+                        local ThreeQuarter = Half + math.floor((FrameHeight + 1) / 4)
+                        --// map actual row Row to the index of the row in the data stream
+                        if Row % 8 == 0 then
+                            SourceRow = Row / 8
+                        elseif Row % 8 == 4 then
+                            SourceRow = Quarter + (Row - 4) / 8
+                        elseif Row % 4 == 2 then
+                            SourceRow = Half + (Row - 2) / 4
+                        else
+                            SourceRow = ThreeQuarter + (Row - 1) / 2
+                        end
+                    end
+
+                    local Y = Top + Row
+                    if Y >= 0 and Y < Height then
+                        local IndexBase = SourceRow * FrameWidth
+                        local CanvasBase = (Y * Width + Left) * 4
+                        for Column = 0, FrameWidth - 1 do
+                            local X = Left + Column
+                            if X >= 0 and X < Width then
+                                local Index = buffer.readu8(Indices, IndexBase + Column)
+                                if Index ~= TransparentIndex then
+                                    local Color = Palette[Index]
+                                    if Color then
+                                        buffer.writeu32(Canvas, CanvasBase + Column * 4, Color)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+
+                local Snapshot = buffer.create(FrameBytes)
+                buffer.copy(Snapshot, 0, Canvas, 0, FrameBytes)
+                Frames[#Frames + 1] = { Buffer = Snapshot, Delay = Delay }
+                Total = Total + FrameBytes
+
+                PreviousRect = { Left, Top, FrameWidth, FrameHeight }
+                PreviousDisposal = Disposal
+                Disposal = 0
+                TransparentIndex = -1
+
+                if Yield then
+                    Yield(#Frames)
+                end
+                if Options.IsCancelled and Options.IsCancelled() then
+                    return nil, "cancelled"
+                end
+
+                if Total + FrameBytes > MaxBytes then
+                    break
+                end
+            else
+                break
+            end
+        end
+
+        if #Frames == 0 then
+            return nil, "GIF has no frames"
+        end
+
+        return { Width = Width, Height = Height, Frames = Frames }
+    end
+    CustomImageManager.DecodeGif = DecodeGif
+
+    --// Kyo: videos are also supported (.webm / .mp4)
     local function CheckVideoData(Data: any): (boolean, string?)
         if typeof(Data) ~= "string" or #Data == 0 then
             return false, "empty file"
@@ -194,35 +537,6 @@ do
             if not readfile or (ReadSuccess and Check(Cached)) then
                 return true, nil
             end
-        end
-
-        --// Kyo: some hosts block hotlinking, so retry with a Referer and refuse HTML pages (not an image)
-        local function Fetch(Url: string)
-            local Success, Body = pcall(game.HttpGet, game, Url)
-            if Success and typeof(Body) == "string" and #Body > 0 then
-                return Body
-            end
-
-            local Request = (syn and syn.request) or request or http_request
-            if Request then
-                local Origin = Url:match("^(https?://[^/]+)") or Url
-                local RequestSuccess, Response = pcall(Request, {
-                    Url = Url,
-                    Method = "GET",
-                    Headers = {
-                        ["Referer"] = Origin .. "/",
-                        ["User-Agent"] = "Mozilla/5.0",
-                    },
-                })
-
-                if RequestSuccess and typeof(Response) == "table" and Response.StatusCode == 200 and Response.Body then
-                    return Response.Body
-                end
-
-                return nil, "HTTP " .. tostring(RequestSuccess and Response and Response.StatusCode or "error")
-            end
-
-            return nil, tostring(Body)
         end
 
         local Body, FetchError = Fetch(AssetData.URL)
@@ -11425,6 +11739,10 @@ function Library:CreateWindow(WindowInfo)
     local BackgroundImage
     local BackgroundVideo
     local BackgroundDim
+    local StopGif
+    local StartGif
+    local ApplyBackgroundState
+    local GifPlayer = { Token = 0, Connection = nil, Editable = nil, Frames = nil }
     local HasBackgroundImage = false
     local BottomBackground
     local BottomBackgroundCorner
@@ -11801,6 +12119,93 @@ function Library:CreateWindow(WindowInfo)
                 BackgroundVideo.Playing = MainFrame.Visible
             end
         end))
+
+        --// Kyo: animated GIF background. The GIF is decoded in Lua and played through an EditableImage
+
+        StopGif = function()
+            GifPlayer.Token += 1
+            GifPlayer.Frames = nil
+
+            if GifPlayer.Connection then
+                GifPlayer.Connection:Disconnect()
+                GifPlayer.Connection = nil
+            end
+
+            if GifPlayer.Editable then
+                pcall(function()
+                    BackgroundImage.ImageContent = Content.none
+                end)
+                pcall(function()
+                    GifPlayer.Editable:Destroy()
+                end)
+                GifPlayer.Editable = nil
+            end
+        end
+        Library:OnUnload(function()
+            StopGif()
+        end)
+
+        StartGif = function(Gif)
+            local CreateSuccess, Editable = pcall(function()
+                return game:GetService("AssetService"):CreateEditableImage({ Size = Vector2.new(Gif.Width, Gif.Height) })
+            end)
+            if not CreateSuccess or not Editable then
+                return false, "your executor does not support EditableImage, which animated GIF backgrounds need"
+            end
+
+            local ContentSuccess = pcall(function()
+                BackgroundImage.ImageContent = Content.fromObject(Editable)
+            end)
+            if not ContentSuccess then
+                pcall(function()
+                    Editable:Destroy()
+                end)
+                return false, "your executor could not display the EditableImage"
+            end
+
+            local Frames = Gif.Frames
+            local Size = Vector2.new(Gif.Width, Gif.Height)
+            local Index = 1
+            local Elapsed = 0
+
+            GifPlayer.Editable = Editable
+            GifPlayer.Frames = Frames
+            Editable:WritePixelsBuffer(Vector2.zero, Size, Frames[1].Buffer)
+
+            if #Frames > 1 then
+                GifPlayer.Connection = Library:GiveSignal(RunService.Heartbeat:Connect(function(Delta)
+                    if not MainFrame.Visible then
+                        return
+                    end
+
+                    Elapsed += Delta
+                    local Delay = Frames[Index].Delay
+                    if Elapsed < Delay then
+                        return
+                    end
+
+                    local Steps = 0
+                    while Elapsed >= Delay and Steps < #Frames do
+                        Elapsed -= Delay
+                        Index = Index % #Frames + 1
+                        Delay = Frames[Index].Delay
+                        Steps += 1
+                    end
+
+                    Editable:WritePixelsBuffer(Vector2.zero, Size, Frames[Index].Buffer)
+                end))
+            end
+
+            return true
+        end
+
+        ApplyBackgroundState = function(IsImage: boolean, IsVideo: boolean)
+            HasBackgroundImage = IsImage or IsVideo
+            BackgroundImage.Visible = IsImage
+            BackgroundVideo.Visible = IsVideo
+            BackgroundDim.Visible = IsVideo
+            Library:SetPanelTransparency(HasBackgroundImage and Library.BackgroundPanelTransparency or 0)
+        end
 
         if WindowInfo.Center then
             MainFrame.Position = UDim2.new(0.5, -MainFrame.Size.X.Offset / 2, 0.5, -MainFrame.Size.Y.Offset / 2)
@@ -12190,7 +12595,8 @@ function Library:CreateWindow(WindowInfo)
         local ValidIcon = false
         local IsVideoBackground = false
 
-        --// Kyo: reset the video layer, it is switched on again below when the new background is a video
+        --// Kyo: reset the video / GIF layers, they are switched on again below when the new background needs them
+        StopGif()
         BackgroundVideo.Playing = false
         BackgroundVideo.Visible = false
         BackgroundDim.Visible = false
@@ -12222,7 +12628,53 @@ function Library:CreateWindow(WindowInfo)
                 local FileName = string.format("%x_%s", Hash, Segment:sub(-60))
 
                 if Extension == "gif" then
-                    Library:Notify("GIFs do not animate in Roblox. Convert it to .webm or .mp4 (ezgif.com/gif-to-webm) and use that link", 8)
+                    local MyToken = GifPlayer.Token
+                    Library:Notify("Loading GIF background...", 3)
+
+                    task.spawn(function()
+                        local Body, FetchError = CustomImageManager.Fetch(Image)
+                        if MyToken ~= GifPlayer.Token then
+                            return
+                        end
+                        if not Body then
+                            Library:Notify(string.format("GIF failed: %s", tostring(FetchError)), 6)
+                            return
+                        end
+
+                        local LastYield = os.clock()
+                        local DecodeSuccess, Gif, DecodeError = pcall(CustomImageManager.DecodeGif, Body, {
+                            Yield = function()
+                                if os.clock() - LastYield > 0.008 then
+                                    task.wait()
+                                    LastYield = os.clock()
+                                end
+                            end,
+                            IsCancelled = function()
+                                return MyToken ~= GifPlayer.Token
+                            end,
+                        })
+                        if MyToken ~= GifPlayer.Token then
+                            return
+                        end
+                        if not DecodeSuccess then
+                            DecodeError = Gif
+                            Gif = nil
+                        end
+                        if not Gif then
+                            Library:Notify(string.format("GIF failed: %s", tostring(DecodeError)), 6)
+                            return
+                        end
+
+                        local Started, StartError = StartGif(Gif)
+                        if not Started then
+                            Library:Notify(string.format("GIF failed: %s", tostring(StartError)), 8)
+                            return
+                        end
+
+                        WindowInfo.BackgroundImage = Image
+                        ApplyBackgroundState(true, false)
+                        Library:Notify(string.format("GIF background applied (%d frames)", #Gif.Frames), 4)
+                    end)
                 else
                     ValidIcon = true
 
@@ -12272,11 +12724,7 @@ function Library:CreateWindow(WindowInfo)
             BackgroundImage.ImageRectSize = Vector2.zero
         end
 
-        HasBackgroundImage = ValidIcon
-        BackgroundImage.Visible = ValidIcon and not IsVideoBackground
-        BackgroundVideo.Visible = ValidIcon and IsVideoBackground
-        BackgroundDim.Visible = ValidIcon and IsVideoBackground
-        Library:SetPanelTransparency(ValidIcon and Library.BackgroundPanelTransparency or 0)
+        ApplyBackgroundState(ValidIcon and not IsVideoBackground, ValidIcon and IsVideoBackground)
         WindowInfo.BackgroundImage = Image
     end
 

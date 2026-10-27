@@ -25,7 +25,7 @@ Base snapshot: upstream `bdaa9b8` (first commit of this repo).
 - Tab icons: `IconColor = Color3` in `AddTab` / `AddKeyTab` (or 5th positional argument, or `Tab:SetIconColor(Color)`) gives that icon its own color with an automatic gradient. Without it the icon follows the accent gradient.
 
 - Background image: lives inside the window behind every element (cropped, not stretched). While active, sidebar, page and groupboxes become semi transparent (`Library.BackgroundPanelTransparency`, default 0.35). PNG / JPG / BMP only, failures are reported with a notification. `Library:SetBackgroundImageTransparency` / ThemeManager "Background Opacity" slider control the image opacity. Add your own panels with `Library:AddPanelSurface(Frame)`.
-- Animated background: a link to a `.webm` / `.mp4` plays muted in a loop behind the window (needs an executor with `getcustomasset` video support). GIF does not animate in Roblox, convert it first (for example ezgif.com/gif-to-webm).
+- Animated background: a link to a `.gif` is downloaded and decoded in Lua (all frames, transparency, disposal and interlace handled, checked against Pillow output) and played through an `EditableImage` (needs executor support). Big GIFs take a few seconds to decode, keep them under ~500 px and ~100 frames. A `.webm` / `.mp4` link plays as a muted looping video instead (needs `getcustomasset` video support).
 
 ## Untouched on purpose
 
