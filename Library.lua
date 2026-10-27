@@ -947,6 +947,7 @@ local Templates = {
         AllowRightClickInput = true
     },
     Dropdown = {
+        Favorites = false, --// Kyo: a string key (or true) turns on the favorites star / pinning
         Values = {},
         DisabledValues = {},
         ValueImages = {},
@@ -1881,6 +1882,7 @@ function Library:UpdateColorsUsingRegistry()
 end
 
 --// Kyo: accent gradient (default purple to pink)
+Library.WindowFading = false --// Kyo: hover tweens are skipped while the window fades, otherwise they undo the fade on the hovered element
 Library.Gradient = {
     Enabled = true,
     Color2 = Color3.fromRGB(236, 72, 153),
@@ -1981,6 +1983,121 @@ function Library:SetIconColor(Icon: ImageLabel, Color: Color3)
     end
     Gradient.Enabled = true
     Gradient.Color = ColorSequence.new(Color, Library:GetAutoGradientColor(Color))
+end
+
+--// Kyo: favorites. Right click (or long press on mobile) on a dropdown item pins it to the top with a star
+Library.Favorites = {}
+Library.FavoritesPath = "Obsidian/favorites.json"
+Library.FavoriteHoldTime = 0.6 --// seconds to hold a finger on an item (mobile)
+local FavoriteDropdowns = setmetatable({}, { __mode = "k" })
+local FavoritesLoaded = false
+
+local function EnsureFolderFor(Path: string)
+    if not isfolder or not makefolder then
+        return
+    end
+
+    local Segments = Path:split("/")
+    table.remove(Segments)
+
+    local Traversed = ""
+    for _, Segment in Segments do
+        Traversed = Traversed .. Segment
+        if not isfolder(Traversed) then
+            pcall(makefolder, Traversed)
+        end
+        Traversed = Traversed .. "/"
+    end
+end
+
+function Library:LoadFavorites()
+    FavoritesLoaded = true
+    Library.Favorites = {}
+
+    if not (isfile and readfile) then
+        return
+    end
+
+    local Success, Content = pcall(function()
+        if isfile(Library.FavoritesPath) then
+            return readfile(Library.FavoritesPath)
+        end
+    end)
+    if not (Success and typeof(Content) == "string") then
+        return
+    end
+
+    local DecodeSuccess, Decoded = pcall(game:GetService("HttpService").JSONDecode, game:GetService("HttpService"), Content)
+    if not (DecodeSuccess and typeof(Decoded) == "table") then
+        return
+    end
+
+    for Key, List in Decoded do
+        if typeof(List) == "table" then
+            local Set = {}
+            for _, Name in List do
+                Set[tostring(Name)] = true
+            end
+            Library.Favorites[Key] = Set
+        end
+    end
+end
+
+function Library:SaveFavorites()
+    if not writefile then
+        return
+    end
+
+    local Data = {}
+    for Key, Set in Library.Favorites do
+        local List = {}
+        for Name in Set do
+            table.insert(List, Name)
+        end
+        table.sort(List)
+
+        if #List > 0 then
+            Data[Key] = List
+        end
+    end
+
+    EnsureFolderFor(Library.FavoritesPath)
+    pcall(writefile, Library.FavoritesPath, game:GetService("HttpService"):JSONEncode(Data))
+end
+
+function Library:RefreshFavoriteDropdowns(Key: string?)
+    for Dropdown, DropdownKey in FavoriteDropdowns do
+        if not Dropdown.Destroyed and (not Key or Key == DropdownKey) then
+            Dropdown:BuildDropdownList()
+        end
+    end
+end
+
+function Library:SetFavoritesPath(Path: string)
+    Library.FavoritesPath = Path
+    Library:LoadFavorites()
+    Library:RefreshFavoriteDropdowns()
+end
+
+function Library:IsFavorite(Key: string, Name: any): boolean
+    if not FavoritesLoaded then
+        Library:LoadFavorites()
+    end
+
+    local Set = Library.Favorites[Key]
+    return Set ~= nil and Set[tostring(Name)] == true
+end
+
+function Library:SetFavorite(Key: string, Name: any, State: boolean)
+    if not FavoritesLoaded then
+        Library:LoadFavorites()
+    end
+
+    Library.Favorites[Key] = Library.Favorites[Key] or {}
+    Library.Favorites[Key][tostring(Name)] = State and true or nil
+
+    Library:SaveFavorites()
+    Library:RefreshFavoriteDropdowns(Key)
 end
 
 --// Kyo: Bold = true uses the header font
@@ -5009,7 +5126,7 @@ do
         end
 
         table.insert(KeyPicker.Connections, Picker.MouseEnter:Connect(function()
-            if ParentObj.Disabled then
+            if ParentObj.Disabled or Library.WindowFading then
                 return
             end
 
@@ -5017,7 +5134,7 @@ do
         end))
 
         table.insert(KeyPicker.Connections, Picker.MouseLeave:Connect(function()
-            if ParentObj.Disabled then
+            if ParentObj.Disabled or Library.WindowFading then
                 return
             end
 
@@ -7393,7 +7510,7 @@ do
 
         local function InitEvents(Button)
             table.insert(Button.Connections, Button.Base.MouseEnter:Connect(function()
-                if Button.Disabled then
+                if Button.Disabled or Library.WindowFading then
                     return
                 end
 
@@ -7409,7 +7526,7 @@ do
                 end
             end))
             table.insert(Button.Connections, Button.Base.MouseLeave:Connect(function()
-                if Button.Disabled then
+                if Button.Disabled or Library.WindowFading then
                     return
                 end
 
@@ -9012,6 +9129,8 @@ do
             DisabledValues = Info.DisabledValues,
             ValueImages = Info.ValueImages,
 
+            FavoritesKey = Info.Favorites and (typeof(Info.Favorites) == "string" and Info.Favorites or Idx) or nil,
+
             Multi = Info.Multi,
             DragSelect = Info.Multi and not Library.IsMobile and Info.DragSelect == true,
             KeepDisabledValuePosition = Info.KeepDisabledValuePosition == true,
@@ -9394,6 +9513,19 @@ do
                 end)
             end
 
+            --// Kyo: favorites are pinned to the top (stable order)
+            if Dropdown.FavoritesKey then
+                local Pinned, Others = {}, {}
+                for _, Entry in Pending do
+                    Entry.IsFavorite = Library:IsFavorite(Dropdown.FavoritesKey, Entry.Value)
+                    table.insert(Entry.IsFavorite and Pinned or Others, Entry)
+                end
+
+                if #Pinned > 0 and not IsSearching then
+                    Pending = table.move(Others, 1, #Others, #Pinned + 1, Pinned)
+                end
+            end
+
             table.clear(FilteredEntries)
 
             if Dropdown.KeepDisabledValuePosition then
@@ -9455,6 +9587,11 @@ do
                 Row.Corner.BottomLeftRadius = IsLast and UDim.new(0, Library.CornerRadius / 2) or UDim.new(0, 0)
 
                 Row.Button.Text = Entry.FormattedValue
+
+                --// Kyo: star on favorites
+                local IsFavorite = Dropdown.FavoritesKey ~= nil and Entry.IsFavorite == true
+                Row.Star.Visible = IsFavorite
+                Row.ButtonPadding.PaddingRight = UDim.new(0, IsFavorite and 26 or 7)
 
                 if Entry.ValueImage then
                     Row.Image.Visible = true
@@ -9609,12 +9746,31 @@ do
                 TextXAlignment = Enum.TextXAlignment.Left,
                 Parent = Container,
             })
-            New("UIPadding", {
+            local ButtonPadding = New("UIPadding", {
                 PaddingLeft = UDim.new(0, 7),
                 PaddingRight = UDim.new(0, 7),
                 Parent = Button,
             })
 
+            --// Kyo: favorite star (accent gradient)
+            local Star = New("ImageLabel", {
+                AnchorPoint = Vector2.new(1, 0.5),
+                BackgroundTransparency = 1,
+                ImageColor3 = "AccentColor",
+                Position = UDim2.new(1, -6, 0.5, 0),
+                Size = UDim2.fromOffset(14, 14),
+                Visible = false,
+                ZIndex = Button.ZIndex + 1,
+                Parent = Container,
+            })
+            local StarIcon = Library:GetCustomIcon("star")
+            if StarIcon then
+                Library:ApplyLucideIcon(Star, StarIcon)
+            end
+            Library:AddGradient(Star, "ImageColor3", 45)
+
+            Row.Star = Star
+            Row.ButtonPadding = ButtonPadding
             Row.Container = Container
             Row.Corner = Corner
             Row.Image = Image
@@ -9643,7 +9799,60 @@ do
                 end
             end
 
+            --// Kyo: right click or long press toggles the favorite
+            if Dropdown.FavoritesKey then
+                table.insert(Dropdown.Connections, Button.MouseButton2Click:Connect(function()
+                    local Entry = Row.Entry
+                    if Entry then
+                        Library:SetFavorite(Dropdown.FavoritesKey, Entry.Value, not Library:IsFavorite(Dropdown.FavoritesKey, Entry.Value))
+                    end
+                end))
+
+                table.insert(Dropdown.Connections, Button.InputBegan:Connect(function(Input)
+                    if Input.UserInputType ~= Enum.UserInputType.Touch then
+                        return
+                    end
+
+                    local Entry = Row.Entry
+                    if not Entry then
+                        return
+                    end
+
+                    Row.HoldToken = (Row.HoldToken or 0) + 1
+                    local Token = Row.HoldToken
+                    local StartPosition = Input.Position
+
+                    task.delay(Library.FavoriteHoldTime, function()
+                        if Row.HoldToken ~= Token or Row.Entry ~= Entry then
+                            return
+                        end
+                        if Input.UserInputState == Enum.UserInputState.End or Input.UserInputState == Enum.UserInputState.Cancel then
+                            return
+                        end
+                        if (Input.Position - StartPosition).Magnitude > 12 then
+                            return --// the finger moved, it is a scroll
+                        end
+
+                        Row.SuppressClick = true
+                        Library:SetFavorite(Dropdown.FavoritesKey, Entry.Value, not Library:IsFavorite(Dropdown.FavoritesKey, Entry.Value))
+
+                        Input.Changed:Connect(function()
+                            if Input.UserInputState == Enum.UserInputState.End or Input.UserInputState == Enum.UserInputState.Cancel then
+                                task.delay(0.2, function()
+                                    Row.SuppressClick = false
+                                end)
+                            end
+                        end)
+                    end)
+                end))
+            end
+
             table.insert(Dropdown.Connections, Button.MouseButton1Click:Connect(function()
+                if Row.SuppressClick then
+                    Row.SuppressClick = false
+                    return
+                end
+
                 local Entry = Row.Entry
                 if not Entry or Entry.IsDisabled or DragSelecting then
                     return
@@ -9798,6 +10007,10 @@ do
 
         for _ = 1, PoolSize do
             table.insert(Pool, CreatePoolRow())
+        end
+
+        if Dropdown.FavoritesKey then
+            FavoriteDropdowns[Dropdown] = Dropdown.FavoritesKey
         end
 
         table.insert(Dropdown.Connections, MenuTable.Menu:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
@@ -10081,8 +10294,19 @@ do
 
         Options[Idx] = Dropdown
 
+        function Dropdown:IsFavorite(Value)
+            return Dropdown.FavoritesKey ~= nil and Library:IsFavorite(Dropdown.FavoritesKey, Value)
+        end
+
+        function Dropdown:SetFavorite(Value, State: boolean)
+            if Dropdown.FavoritesKey then
+                Library:SetFavorite(Dropdown.FavoritesKey, Value, State)
+            end
+        end
+
         function Dropdown:Destroy()
             Dropdown.Destroyed = true
+            FavoriteDropdowns[Dropdown] = nil
 
             StopDragSelect()
 
@@ -14200,7 +14424,7 @@ function Library:CreateWindow(WindowInfo)
         end
 
         function Tab:Hover(Hovering)
-            if Library.ActiveTab == Tab then
+            if Library.ActiveTab == Tab or Library.WindowFading then
                 return
             end
 
@@ -14667,7 +14891,7 @@ function Library:CreateWindow(WindowInfo)
         function Tab:UpdateCorners() end
 
         function Tab:Hover(Hovering)
-            if Library.ActiveTab == Tab then
+            if Library.ActiveTab == Tab or Library.WindowFading then
                 return
             end
 
@@ -15325,6 +15549,7 @@ function Library:CreateWindow(WindowInfo)
         if Library.Animations and Library.Animations.ToggleWindow == true then
             local FadeTime = Library.WindowAnimationInfo.Time
             Fading = true
+            Library.WindowFading = true
 
             if Library.Toggled then
                 MainFrame.Visible = true
@@ -15359,6 +15584,7 @@ function Library:CreateWindow(WindowInfo)
             task.delay(FadeTime, function()
                 MainFrame.Visible = Library.Toggled
                 Fading = false
+                Library.WindowFading = false
             end)
         else
             MainFrame.Visible = Library.Toggled

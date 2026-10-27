@@ -288,6 +288,11 @@ function ThemeManager:SetFolder(Folder: string)
 
     ThemeManager.Folder = Folder
     ThemeManager:BuildFolderTree()
+
+    --// Kyo: favorites are stored next to the themes
+    if ThemeManager.Library and ThemeManager.Library.SetFavoritesPath then
+        ThemeManager.Library:SetFavoritesPath(Folder .. "/favorites.json")
+    end
 end
 
 --// Theme Management \\--
@@ -881,6 +886,7 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
 
     Themesbox:AddDropdown("FontFace", {
         Text = "Font Face",
+        Favorites = "Fonts",
         Default = "GothamMedium",
 
         Values = table.clone(FontNames),
@@ -890,6 +896,7 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
     })
     Themesbox:AddDropdown("HeaderFont", {
         Text = "Header Font (Bold)",
+        Favorites = "Fonts",
         Default = "GothamBold",
 
         Values = table.clone(FontNames),
@@ -924,6 +931,7 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
 
     Themesbox:AddDropdown("ThemeManager_ThemeList", { 
         Text = "Theme list", 
+        Favorites = "Themes", --// Kyo: right click / long press pins a theme
 
         Values = BuiltInThemesNames,
         AllowNull = true,
@@ -1026,6 +1034,7 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
 
     CustomThemeList = Themesbox:AddDropdown("ThemeManager_CustomThemeList", { 
         Text = "Custom themes",
+        Favorites = "CustomThemes",
 
         Values = ThemeManager:ReloadCustomThemes(), 
         AllowNull = true,

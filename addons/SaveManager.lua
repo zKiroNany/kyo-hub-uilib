@@ -883,6 +883,7 @@ function SaveManager:BuildConfigSection(Tab: any, IconName: string)
     --// Manage
     ConfigurationBox:AddDropdown("SaveManager_ConfigList", {
         Text = "Config list",
+        Favorites = "Configs/" .. tostring(SaveManager.Folder), --// Kyo: right click / long press pins a config
 
         Values = SaveManager:RefreshConfigList(),
         AllowNull = true,

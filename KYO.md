@@ -27,6 +27,9 @@ Base snapshot: upstream `bdaa9b8` (first commit of this repo).
 - Background image: lives inside the window behind every element (cropped, not stretched). While active, sidebar, page and groupboxes become semi transparent (`Library.BackgroundPanelTransparency`, default 0.35). PNG / JPG / BMP only, failures are reported with a notification. `Library:SetBackgroundImageTransparency` / ThemeManager "Background Opacity" slider control the image opacity. Add your own panels with `Library:AddPanelSurface(Frame)`.
 - Animated background: a link to a `.gif` is downloaded and decoded in Lua (all frames, transparency, disposal and interlace handled, checked against Pillow output) and played through an `EditableImage` (needs executor support). Big GIFs take a few seconds to decode, keep them under ~500 px and ~100 frames. A `.webm` / `.mp4` link plays as a muted looping video instead (needs `getcustomasset` video support).
 
+- Favorites: `Favorites = "Key"` in any `AddDropdown`. Right click (or hold a finger for `Library.FavoriteHoldTime`, default 0.6 s, without moving) on an item toggles its star. Favorites are pinned to the top and saved in `<ThemeManager folder>/favorites.json` (`Library:SetFavoritesPath`). Enabled on the theme lists, font lists and the config list. API: `Dropdown:IsFavorite(Value)`, `Dropdown:SetFavorite(Value, Bool)`.
+- Hover tweens on buttons, tabs and key pickers are skipped while the window fades (`Library.WindowFading`), otherwise the hovered element stayed visible until the fade ended.
+
 ## Untouched on purpose
 
 SaveManager, flags (`Options` / `Toggles`), keybinds, mobile handling and the unload/cleanup system. ThemeManager only had its Default theme and font default changed (see below).

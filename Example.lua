@@ -351,6 +351,7 @@ local DropdownGroupBox = Tabs.Main:AddGroupbox({
 })
 
 DropdownGroupBox:AddDropdown("MyDropdown", {
+	Favorites = "ExampleDropdown", -- Right click (or hold on mobile) an item to pin it to the top with a star. Any string works as the save key
 	Values = { "This", "is", "a", "dropdown" },
 	Default = 1, -- number index of the value / string
 	Multi = false, -- true / false, allows multiple choices to be selected
