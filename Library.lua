@@ -10840,6 +10840,23 @@ function Library:SetHeaderFont(FontFace)
     end
 end
 
+--// Kyo: panels and groupboxes turn semi transparent while a background image is active
+Library.PanelSurfaces = setmetatable({}, { __mode = "k" })
+Library.PanelTransparency = 0
+Library.BackgroundPanelTransparency = 0.35
+
+function Library:AddPanelSurface(Object: GuiObject)
+    Library.PanelSurfaces[Object] = true
+    Object.BackgroundTransparency = Library.PanelTransparency
+end
+
+function Library:SetPanelTransparency(Value: number)
+    Library.PanelTransparency = Value
+    for Object in Library.PanelSurfaces do
+        Object.BackgroundTransparency = Value
+    end
+end
+
 function Library:SetBackgroundImageTransparency(Value: number)
     if Library.Window and Library.Window.SetBackgroundImageTransparency then
         Library.Window:SetBackgroundImageTransparency(Value)
@@ -11703,16 +11720,17 @@ function Library:CreateWindow(WindowInfo)
 
         local BackgroundIcon = Library:GetCustomIcon(WindowInfo.BackgroundImage)
         HasBackgroundImage = BackgroundIcon ~= nil
+        --// Kyo: lives inside the window and behind every element (ZIndex 0)
         BackgroundImage = New("ImageLabel", {
             Active = false,
             Position = UDim2.fromScale(0, 0),
             Size = UDim2.fromScale(1, 1),
-            ScaleType = Enum.ScaleType.Stretch,
-            ZIndex = Overlay.ZIndex + 1,
+            ScaleType = Enum.ScaleType.Crop,
+            ZIndex = 0,
             BackgroundTransparency = 1,
             ImageTransparency = 0.6,
-            Visible = false,
-            Parent = ScreenGui,
+            Visible = HasBackgroundImage,
+            Parent = MainFrame,
         })
         if BackgroundIcon then
             Library:ApplyLucideIcon(BackgroundImage, BackgroundIcon)
@@ -11725,28 +11743,6 @@ function Library:CreateWindow(WindowInfo)
                 Parent = BackgroundImage,
             })
         )
-
-        Library:GiveSignal(RunService.RenderStepped:Connect(function()
-            if not (BackgroundImage and MainFrame) then
-                return
-            end
-
-            local ShouldShow = HasBackgroundImage and MainFrame.Visible
-            BackgroundImage.Visible = ShouldShow
-
-            if not ShouldShow then
-                return
-            end
-
-            BackgroundImage.Position = UDim2.fromOffset(
-                MainFrame.AbsolutePosition.X,
-                MainFrame.AbsolutePosition.Y
-            )
-            BackgroundImage.Size = UDim2.fromOffset(
-                MainFrame.AbsoluteSize.X,
-                MainFrame.AbsoluteSize.Y
-            )
-        end))
 
         if WindowInfo.Center then
             MainFrame.Position = UDim2.new(0.5, -MainFrame.Size.X.Offset / 2, 0.5, -MainFrame.Size.Y.Offset / 2)
@@ -12099,6 +12095,11 @@ function Library:CreateWindow(WindowInfo)
             Parent = Container,
         })
 
+        --// Kyo: background image support
+        Library:SetPanelTransparency(HasBackgroundImage and Library.BackgroundPanelTransparency or 0)
+        Library:AddPanelSurface(Tabs)
+        Library:AddPanelSurface(Container)
+
         Library.WindowContainer = Container
     end
 
@@ -12189,6 +12190,8 @@ function Library:CreateWindow(WindowInfo)
         end
 
         HasBackgroundImage = ValidIcon
+        BackgroundImage.Visible = ValidIcon
+        Library:SetPanelTransparency(ValidIcon and Library.BackgroundPanelTransparency or 0)
         WindowInfo.BackgroundImage = Image
     end
 
@@ -12864,6 +12867,7 @@ function Library:CreateWindow(WindowInfo)
                     Size = UDim2.fromScale(1, 0),
                     Parent = BoxHolder,
                 })
+                Library:AddPanelSurface(TabboxHolder)
                 table.insert(
                     Library.Corners,
                     New("UICorner", {
@@ -13262,6 +13266,7 @@ function Library:CreateWindow(WindowInfo)
                     Size = UDim2.fromScale(1, 0),
                     Parent = BoxHolder,
                 })
+                Library:AddPanelSurface(GroupboxHolder)
                 table.insert(
                     Library.Corners,
                     New("UICorner", {

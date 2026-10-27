@@ -24,6 +24,8 @@ Base snapshot: upstream `bdaa9b8` (first commit of this repo).
 - Accent gradient (default purple `8f48cf` to pink `ec4899`): `Library:SetGradient(Enabled, Color2)`. Applied to window border and title, groupbox title and line, tab indicator and icons, buttons, slider fill and toggle switch when on. Themes without a second color get an automatic one (`Library:GetAutoGradientColor`). Add it to your own element with `Library:AddGradient(Instance, "BackgroundColor3", Rotation)`, and call `Library:SyncGradient(Instance)` after changing its registry key by hand.
 - Tab icons: `IconColor = Color3` in `AddTab` / `AddKeyTab` (or 5th positional argument, or `Tab:SetIconColor(Color)`) gives that icon its own color with an automatic gradient. Without it the icon follows the accent gradient.
 
+- Background image: lives inside the window behind every element (cropped, not stretched). While active, sidebar, page and groupboxes become semi transparent (`Library.BackgroundPanelTransparency`, default 0.35). PNG / JPG / BMP only, failures are reported with a notification. `Library:SetBackgroundImageTransparency` / ThemeManager "Background Opacity" slider control the image opacity. Add your own panels with `Library:AddPanelSurface(Frame)`.
+
 ## Untouched on purpose
 
 SaveManager, flags (`Options` / `Toggles`), keybinds, mobile handling and the unload/cleanup system. ThemeManager only had its Default theme and font default changed (see below).
