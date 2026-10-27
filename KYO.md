@@ -30,7 +30,7 @@ Base snapshot: upstream `bdaa9b8` (first commit of this repo).
 - Favorites: `Favorites = "Key"` in any `AddDropdown`. Right click (or hold a finger for `Library.FavoriteHoldTime`, default 0.6 s, without moving) on an item toggles its star. Favorites are pinned to the top and saved in `<ThemeManager folder>/favorites.json` (`Library:SetFavoritesPath`). Enabled on the theme lists, font lists and the config list. API: `Dropdown:IsFavorite(Value)`, `Dropdown:SetFavorite(Value, Bool)`.
 - Hover tweens on buttons, tabs and key pickers are skipped while the window fades (`Library.WindowFading`), otherwise the hovered element stayed visible until the fade ended.
 
-- Themes: Default plus 8 community themes (Tokyo Ghoul, One Piece, Halloween, Witch Brew, Naruto, Demon Slayer, Jujutsu Kaisen, Chainsaw Man) with their own colors, gradient and header font. They never touch the background image. Built-in themes that do not set fonts go back to GothamMedium / GothamBold.
+- Themes: Default plus 8 community themes (Tokyo Ghoul, One Piece, Halloween, Witch Brew, Naruto, Demon Slayer, Jujutsu Kaisen, Chainsaw Man) with their own colors, gradient, header font and background image (`backgrounds/<theme>.jpg`, 756x504 original AI generated artwork made for Kyo, no characters, logos or text, loaded from this repo through `BackgroundBaseURL` in ThemeManager). Choosing Default or any of the old built-in themes clears the background again. Built-in themes that do not set fonts go back to GothamMedium / GothamBold. To change an image, upload it under a new file name, files are cached on disk by URL.
 
 ## Untouched on purpose
 

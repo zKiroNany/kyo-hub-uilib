@@ -41,8 +41,11 @@ local LuminanceRedWeight,
       LuminanceBlueWeight = 0.2126, 0.7152, 0.0722 --// R, G, B channel weights in the relative luminance formula
 local ContrastRatioOffset = 0.05 --// Offset added to both luminances when computing a contrast ratio
 
+--// Kyo: theme background art (original artwork) lives in this repo
+local BackgroundBaseURL = "https://raw.githubusercontent.com/zKiroNany/kyo-hub-uilib/refs/heads/main/backgrounds/"
+
 --// Theme Manager
-local SchemeIndexes = { "FontColor", "MainColor", "AccentColor", "BackgroundColor", "OutlineColor" }
+local SchemeIndexes ={ "FontColor", "MainColor", "AccentColor", "BackgroundColor", "OutlineColor" }
 
 --// Kyo: every Roblox font is available for body and header text
 local FontNames = {}
@@ -75,38 +78,38 @@ local ThemeManager = {
             1,
             { FontColor = "e6e6e6", MainColor = "232323", AccentColor = "8f48cf", BackgroundColor = "1c1c1c", OutlineColor = "323232", BackgroundImage = "", AccentColor2 = "ec4899", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "GothamBold" },
         },
-        --// Kyo: community themes (colors, gradient and fonts only, the background image is left alone)
+        --// Kyo: community themes (colors, gradient, fonts and an original background image)
         ["Tokyo Ghoul"] = {
             2,
-            { FontColor = "f2f2f2", MainColor = "161616", AccentColor = "e5122b", BackgroundColor = "0c0c0c", OutlineColor = "2c2c2c", AccentColor2 = "ff5a6e", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "GrenzeGotisch" },
+            { FontColor = "f2f2f2", MainColor = "161616", AccentColor = "e5122b", BackgroundColor = "0c0c0c", OutlineColor = "2c2c2c", AccentColor2 = "ff5a6e", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "GrenzeGotisch", BackgroundImage = BackgroundBaseURL .. "tokyo-ghoul.jpg" },
         },
         ["One Piece"] = {
             3,
-            { FontColor = "fff6df", MainColor = "10223d", AccentColor = "f4b400", BackgroundColor = "0a1628", OutlineColor = "22436b", AccentColor2 = "ff4d5a", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "LuckiestGuy" },
+            { FontColor = "fff6df", MainColor = "10223d", AccentColor = "f4b400", BackgroundColor = "0a1628", OutlineColor = "22436b", AccentColor2 = "ff4d5a", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "LuckiestGuy", BackgroundImage = BackgroundBaseURL .. "one-piece.jpg" },
         },
         ["Halloween"] = {
             4,
-            { FontColor = "ffe9d2", MainColor = "18121f", AccentColor = "ff7a00", BackgroundColor = "0e0a13", OutlineColor = "31244a", AccentColor2 = "a45cff", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "Creepster" },
+            { FontColor = "ffe9d2", MainColor = "18121f", AccentColor = "ff7a00", BackgroundColor = "0e0a13", OutlineColor = "31244a", AccentColor2 = "a45cff", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "Creepster", BackgroundImage = BackgroundBaseURL .. "halloween.jpg" },
         },
         ["Witch Brew"] = {
             5,
-            { FontColor = "e6ffe9", MainColor = "111d14", AccentColor = "39ff14", BackgroundColor = "09110b", OutlineColor = "23402a", AccentColor2 = "a56bff", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "SpecialElite" },
+            { FontColor = "e6ffe9", MainColor = "111d14", AccentColor = "39ff14", BackgroundColor = "09110b", OutlineColor = "23402a", AccentColor2 = "a56bff", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "SpecialElite", BackgroundImage = BackgroundBaseURL .. "witch-brew.jpg" },
         },
         ["Naruto"] = {
             6,
-            { FontColor = "f5f5f5", MainColor = "1a1d29", AccentColor = "ff7a18", BackgroundColor = "11131a", OutlineColor = "2c3250", AccentColor2 = "ffd23f", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "PermanentMarker" },
+            { FontColor = "f5f5f5", MainColor = "1a1d29", AccentColor = "ff7a18", BackgroundColor = "11131a", OutlineColor = "2c3250", AccentColor2 = "ffd23f", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "PermanentMarker", BackgroundImage = BackgroundBaseURL .. "naruto.jpg" },
         },
         ["Demon Slayer"] = {
             7,
-            { FontColor = "e8fff4", MainColor = "122019", AccentColor = "2bb673", BackgroundColor = "0a110e", OutlineColor = "1f3a2f", AccentColor2 = "ff4d5e", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "Fondamento" },
+            { FontColor = "e8fff4", MainColor = "122019", AccentColor = "2bb673", BackgroundColor = "0a110e", OutlineColor = "1f3a2f", AccentColor2 = "ff4d5e", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "Fondamento", BackgroundImage = BackgroundBaseURL .. "demon-slayer.jpg" },
         },
         ["Jujutsu Kaisen"] = {
             8,
-            { FontColor = "e8ecff", MainColor = "0f1224", AccentColor = "6b7bff", BackgroundColor = "080a14", OutlineColor = "263059", AccentColor2 = "c04dff", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "Michroma" },
+            { FontColor = "e8ecff", MainColor = "0f1224", AccentColor = "6b7bff", BackgroundColor = "080a14", OutlineColor = "263059", AccentColor2 = "c04dff", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "Michroma", BackgroundImage = BackgroundBaseURL .. "jujutsu-kaisen.jpg" },
         },
         ["Chainsaw Man"] = {
             9,
-            { FontColor = "fff0e0", MainColor = "1c0d0d", AccentColor = "ff3b1f", BackgroundColor = "120808", OutlineColor = "3d1b1b", AccentColor2 = "ffb000", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "Bangers" },
+            { FontColor = "fff0e0", MainColor = "1c0d0d", AccentColor = "ff3b1f", BackgroundColor = "120808", OutlineColor = "3d1b1b", AccentColor2 = "ffb000", AccentGradient = true, FontFace = "GothamMedium", HeaderFont = "Bangers", BackgroundImage = BackgroundBaseURL .. "chainsaw-man.jpg" },
         },
         ["BBot"] = {
             10,
