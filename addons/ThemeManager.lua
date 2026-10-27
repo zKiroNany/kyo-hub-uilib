@@ -431,6 +431,7 @@ local function BuildCurrentThemeData(): {[string]: any}
         HeaderFont = Library.Options.HeaderFont.Value, --// Kyo
         AccentColor2 = Library.Options.AccentColor2.Value:ToHex(),
         AccentGradient = Library.Toggles.AccentGradient.Value, --// toggles live in Library.Toggles
+        ToggleStyle = Library.Options.ToggleStyle.Value, --// Kyo: Square or Round
     }
 
     for _, SchemeIndex in SchemeIndexes do
@@ -820,6 +821,10 @@ function ThemeManager:ApplyThemeData(ThemeData: any): (boolean, string?)
             if typeof(Value) ~= "boolean" then continue end
             ThemeManager.Library:SetGradient(Value)
 
+        elseif Index == "ToggleStyle" then
+            if Value ~= "Square" and Value ~= "Round" then continue end
+            ThemeManager.Library:SetToggleStyle(Value)
+
         elseif Index == "BackgroundImage" then
             if typeof(Value) ~= "string" then continue end
             --// Kyo: no "applied" popup every time a theme (or startup) sets its own background
@@ -990,6 +995,16 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
     Themesbox:AddToggle("AccentGradient", {
         Text = "Accent Gradient",
         Default = ThemeManager.Library.Gradient.Enabled,
+    })
+
+    --// Kyo: toggle shape, Square (Sea Hub) is the default, Round is the original Obsidian look
+    Themesbox:AddDropdown("ToggleStyle", {
+        Text = "Toggle Style",
+        Default = "Square",
+
+        Values = { "Square", "Round" },
+        AllowNull = false,
+        Multi = false
     })
 
     --// Accessibility: live contrast readout for the colors above
@@ -1358,6 +1373,7 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
         ThemeManager:UpdateContrastWarning()
     end)
     BackgroundImage:OnChanged(function(Value) ThemeManager.Library:SetBackgroundImage(Value) end)
+    ThemeManager.Library.Options.ToggleStyle:OnChanged(function(Value) ThemeManager.Library:SetToggleStyle(Value) end)
 
     --// Load default
     ThemeManager:LoadDefault()

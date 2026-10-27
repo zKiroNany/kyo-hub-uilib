@@ -2069,6 +2069,34 @@ function Library:SetGradient(Enabled: boolean?, Color2: Color3?)
     Library:UpdateGradients()
 end
 
+--// Kyo: toggle shape. "Square" (Sea Hub, default) or "Round" (Obsidian). Applies live to every switch already on screen
+Library.ToggleStyle = "Square"
+Library.ToggleShapes = {}
+
+function Library:GetToggleCorners(Style: string?)
+    if (Style or Library.ToggleStyle) == "Round" then
+        return UDim.new(1, 0), UDim.new(1, 0)
+    end
+
+    return UDim.new(0, Library.CornerRadius), UDim.new(0, math.max(Library.CornerRadius - 2, 1))
+end
+
+function Library:SetToggleStyle(Style: string?)
+    Style = if typeof(Style) == "string" and string.lower(Style) == "round" then "Round" else "Square"
+    Library.ToggleStyle = Style
+
+    local SwitchCorner, BallCorner = Library:GetToggleCorners(Style)
+    for Index = #Library.ToggleShapes, 1, -1 do
+        local Shape = Library.ToggleShapes[Index]
+        if Shape.Switch.Parent == nil then
+            table.remove(Library.ToggleShapes, Index)
+        else
+            Shape.Switch.CornerRadius = SwitchCorner
+            Shape.Ball.CornerRadius = BallCorner
+        end
+    end
+end
+
 --// Kyo: fixed color icon with an automatic gradient made from it
 function Library:SetIconColor(Icon: ImageLabel, Color: Color3)
     Icon.ImageColor3 = Color3.new(1, 1, 1)
@@ -8394,8 +8422,9 @@ do
             Size = UDim2.fromOffset(32, 18),
             Parent = Button,
         })
-        New("UICorner", {
-            CornerRadius = UDim.new(1, 0),
+        local SwitchCorner, BallCorner = Library:GetToggleCorners() --// Kyo: square or round
+        local SwitchRound = New("UICorner", {
+            CornerRadius = SwitchCorner,
             Parent = Switch,
         })
         New("UIPadding", {
@@ -8417,10 +8446,11 @@ do
             SizeConstraint = Enum.SizeConstraint.RelativeYY,
             Parent = Switch,
         })
-        New("UICorner", {
-            CornerRadius = UDim.new(1, 0),
+        local BallRound = New("UICorner", {
+            CornerRadius = BallCorner,
             Parent = Ball,
         })
+        table.insert(Library.ToggleShapes, { Switch = SwitchRound, Ball = BallRound })
 
         function Toggle:UpdateColors()
             Toggle:Display()
