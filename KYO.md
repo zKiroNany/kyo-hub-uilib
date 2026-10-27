@@ -15,7 +15,7 @@ Base snapshot: upstream `bdaa9b8` (first commit of this repo).
 
 ## Untouched on purpose
 
-SaveManager, ThemeManager, flags (`Options` / `Toggles`), keybinds, mobile handling and the unload/cleanup system.
+SaveManager, flags (`Options` / `Toggles`), keybinds, mobile handling and the unload/cleanup system. ThemeManager only had its Default theme and font default changed (see below).
 
 ## Loading the fork
 
