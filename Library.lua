@@ -12113,45 +12113,39 @@ function Library:CreateWindow(WindowInfo)
                 ValidIcon = true
 
                 Library:ApplyLucideIcon(BackgroundImage, BackgroundIcon)
-            elseif Image:match("http://") or Image:match("https://") then
-                local RawFileName = Image:match("(.+)%..+$")
-                local _, Domain = Image:match("^(https?://)([^/]+)");
+            elseif Image:match("^https?://") then
+                --// Kyo: build a safe file name (query strings like ?token=... cannot be part of a file name)
+                local CleanUrl = Image:gsub("[?#].*$", "")
+                local Segment = CleanUrl:match("([^/]+)$") or "background.png"
+                Segment = Segment:gsub("[^%w%._%-]", "_")
+                if not Segment:match("%.%w+$") then
+                    Segment = Segment .. ".png"
+                end
 
-                if RawFileName and Domain then
-                    local Extention = string.sub(Image, #RawFileName + 1, #Image)
-                    local FileNamePos = RawFileName:gsub("\\", "/"):find("/[^/]*$")
-                    local FileName = FileNamePos and Image:sub(FileNamePos + 1) or nil
+                local Hash = 0
+                for Index = 1, #Image do
+                    Hash = (Hash * 31 + string.byte(Image, Index)) % 4294967296
+                end
 
-                    if FileName then
-                        ValidIcon = true
+                local FileName = string.format("%x_%s", Hash, Segment:sub(-60))
 
-                        local AssetName = Domain .. FileName
-                        if #AssetName > 255 then
-                            local NewLength = 255 - #Domain - #Extention
-                            if NewLength < 0 then
-                                AssetName = Domain .. Extention
-                            else
-                                AssetName = Domain .. string.sub(FileName:sub(1, #FileName - #Extention), 1, NewLength) .. Extention
-                            end
-                        end
+                ValidIcon = true
 
-                        local DownloadOk, DownloadError
-                        if CustomImageManagerAssets[FileName] == nil then
-                            DownloadOk, DownloadError = CustomImageManager.AddAsset(FileName, 0, Image)
-                        else
-                            DownloadOk, DownloadError = CustomImageManager.DownloadAsset(FileName, true)
-                        end
+                local DownloadOk, DownloadError
+                if CustomImageManagerAssets[FileName] == nil then
+                    DownloadOk, DownloadError = CustomImageManager.AddAsset(FileName, 0, Image)
+                else
+                    DownloadOk, DownloadError = CustomImageManager.DownloadAsset(FileName, true)
+                end
 
-                        --// Kyo: tell the user why the background did not load
-                        if DownloadOk then
-                            BackgroundImage.Image = CustomImageManager.GetAsset(FileName)
-                            BackgroundImage.ImageRectOffset = Vector2.zero
-                            BackgroundImage.ImageRectSize = Vector2.zero
-                        else
-                            ValidIcon = false
-                            Library:Notify(string.format("Background image failed: %s", tostring(DownloadError)), 6)
-                        end
-                    end
+                --// Kyo: tell the user why the background did not load
+                if DownloadOk then
+                    BackgroundImage.Image = CustomImageManager.GetAsset(FileName)
+                    BackgroundImage.ImageRectOffset = Vector2.zero
+                    BackgroundImage.ImageRectSize = Vector2.zero
+                else
+                    ValidIcon = false
+                    Library:Notify(string.format("Background image failed: %s", tostring(DownloadError)), 6)
                 end
             end
         end
