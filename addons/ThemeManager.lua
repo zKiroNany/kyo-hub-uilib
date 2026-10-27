@@ -907,6 +907,19 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
         ClearTextOnBlur = false
     })
 
+    Themesbox:AddSlider("BackgroundImageOpacity", {
+        Text = "Background Opacity",
+        Default = 40,
+        Min = 5,
+        Max = 100,
+        Rounding = 0,
+        Suffix = "%",
+        HideMax = true,
+        Callback = function(Value)
+            ThemeManager.Library:SetBackgroundImageTransparency(1 - Value / 100)
+        end,
+    })
+
     Themesbox:AddDivider()
 
     Themesbox:AddDropdown("ThemeManager_ThemeList", { 

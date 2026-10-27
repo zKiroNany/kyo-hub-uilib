@@ -109,7 +109,7 @@ do
             Id = nil,
         }
 
-        CustomImageManager.DownloadAsset(AssetName, ForceRedownload)
+        return CustomImageManager.DownloadAsset(AssetName, ForceRedownload)
     end
 
     function CustomImageManager.GetAsset(AssetName: string)
@@ -145,8 +145,12 @@ do
 
         RecursiveCreatePath(AssetData.Path, true)
 
+        --// Kyo: a cached file is only reused when it is not empty and not an HTML page
         if ForceRedownload ~= true and isfile(AssetData.Path) then
-            return true, nil
+            local ReadSuccess, Cached = pcall(readfile, AssetData.Path)
+            if not readfile or (ReadSuccess and typeof(Cached) == "string" and #Cached > 0 and not Cached:sub(1, 64):match("^%s*<")) then
+                return true, nil
+            end
         end
 
         --// Kyo: some hosts block hotlinking, so retry with a Referer and refuse HTML pages (not an image)
@@ -10812,6 +10816,12 @@ function Library:SetHeaderFont(FontFace)
     end
 end
 
+function Library:SetBackgroundImageTransparency(Value: number)
+    if Library.Window and Library.Window.SetBackgroundImageTransparency then
+        Library.Window:SetBackgroundImageTransparency(Value)
+    end
+end
+
 function Library:SetBackgroundImage(Image: string | number)
     assert(typeof(Image) == "string" or typeof(Image) == "number", "Expected string/number got " .. typeof(Image))
 
@@ -11676,7 +11686,7 @@ function Library:CreateWindow(WindowInfo)
             ScaleType = Enum.ScaleType.Stretch,
             ZIndex = Overlay.ZIndex + 1,
             BackgroundTransparency = 1,
-            ImageTransparency = 0.75,
+            ImageTransparency = 0.6,
             Visible = false,
             Parent = ScreenGui,
         })
@@ -12125,15 +12135,22 @@ function Library:CreateWindow(WindowInfo)
                             end
                         end
 
+                        local DownloadOk, DownloadError
                         if CustomImageManagerAssets[FileName] == nil then
-                            CustomImageManager.AddAsset(FileName, 0, Image)
+                            DownloadOk, DownloadError = CustomImageManager.AddAsset(FileName, 0, Image)
                         else
-                            CustomImageManager.DownloadAsset(FileName, true)
+                            DownloadOk, DownloadError = CustomImageManager.DownloadAsset(FileName, true)
                         end
 
-                        BackgroundImage.Image = CustomImageManager.GetAsset(FileName)
-                        BackgroundImage.ImageRectOffset = Vector2.zero
-                        BackgroundImage.ImageRectSize = Vector2.zero
+                        --// Kyo: tell the user why the background did not load
+                        if DownloadOk then
+                            BackgroundImage.Image = CustomImageManager.GetAsset(FileName)
+                            BackgroundImage.ImageRectOffset = Vector2.zero
+                            BackgroundImage.ImageRectSize = Vector2.zero
+                        else
+                            ValidIcon = false
+                            Library:Notify(string.format("Background image failed: %s", tostring(DownloadError)), 6)
+                        end
                     end
                 end
             end
@@ -12147,6 +12164,11 @@ function Library:CreateWindow(WindowInfo)
 
         HasBackgroundImage = ValidIcon
         WindowInfo.BackgroundImage = Image
+    end
+
+    --// Kyo: 0 = fully visible, 1 = hidden
+    function Window:SetBackgroundImageTransparency(Value: number)
+        BackgroundImage.ImageTransparency = math.clamp(Value, 0, 1)
     end
 
     function Window:SetFooter(Footer: string)
