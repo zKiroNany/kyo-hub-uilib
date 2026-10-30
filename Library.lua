@@ -2569,8 +2569,34 @@ function Library:GetIcon(IconName: string)
     return Icon
 end
 
-function Library:GetCustomIcon(IconName: string): any
+--// Kyo: AllowRemote lets links ("https://...", Discord included), "avatar:<UserId>" and lists of sources through. They cannot
+--// be resolved right now (a download may yield), so the icon comes back as Pending and ApplyLucideIcon finishes it with
+--// Library:ApplyImageSource once the image is ready
+function Library:GetCustomIcon(IconName: any, AllowRemote: boolean?): any
     if not IconName then
+        return nil
+    end
+
+    if AllowRemote == true then
+        local IsList = typeof(IconName) == "table"
+        local IsText = typeof(IconName) == "string"
+
+        if IsList or (IsText and (IconName:match("^[Hh][Tt][Tt][Pp][Ss]?://") or IconName:lower():match("^avatar:%d+$") or IconName:lower():match("^headshot:%d+$") or IconName:lower():match("^user:%d+$"))) then
+            if IsText and IsValidCustomIcon(IconName) then
+                --// Roblox links keep the normal path
+            else
+                return {
+                    Url = "",
+                    ImageRectOffset = Vector2.zero,
+                    ImageRectSize = Vector2.zero,
+                    Custom = true,
+                    Pending = IconName,
+                }
+            end
+        end
+    end
+
+    if typeof(IconName) ~= "string" and typeof(IconName) ~= "number" then
         return nil
     end
 
@@ -2672,6 +2698,25 @@ function Library:ApplyLucideIcon(ImageGui: any, Icon: any, Rotation: number?)
     end
 
     ImageGui.Rotation = Rotation or ImageGui.Rotation
+
+    --// Kyo: remote source (link, avatar or list), downloaded and applied in the background
+    if Icon.Pending ~= nil then
+        local OldFont = ImageGui:FindFirstChild("__IconFont")
+        if OldFont then
+            Library:RemoveFromRegistry(OldFont)
+            OldFont:Destroy()
+        end
+
+        ImageGui.Image = ""
+        ImageGui.ImageRectOffset = Vector2.zero
+        ImageGui.ImageRectSize = Vector2.zero
+        ImageGui.ScaleType = Enum.ScaleType.Fit
+
+        Library:ApplyImageSource(ImageGui, Icon.Pending, function(Reason)
+            warn("[Kyo UI] Icon failed to load: " .. tostring(Reason))
+        end)
+        return
+    end
 
     local FontLabel = ImageGui:FindFirstChild("__IconFont")
     if Icon.FontFace and Icon.Text then
@@ -4286,7 +4331,7 @@ function Library:AddDraggableLabel(...)
 
         local IsNotEmpty = Icon and Trim(tostring(Icon)) ~= ""
         if IsNotEmpty then
-            local CustomIcon = Library:GetCustomIcon(Icon)
+            local CustomIcon = Library:GetCustomIcon(Icon, true)
             assert(CustomIcon, "Icon must be a valid Roblox asset or a valid URL or a valid lucide icon.")
 
             IconImage = IconImage or New("ImageLabel", {
@@ -8102,7 +8147,7 @@ do
                 return
             end
 
-            local ParsedIcon = Library:GetCustomIcon(IconName)
+            local ParsedIcon = Library:GetCustomIcon(IconName, true)
             if ParsedIcon then
                 local ColorKey = Button.Risky and "RedColor" or (ParsedIcon.Custom and "WhiteColor" or "FontColor")
 
@@ -13587,7 +13632,7 @@ function Library:Notify(...)
 
     local BigIconLabel
     if Data.BigIcon then
-        local ParsedIcon = Library:GetCustomIcon(Data.BigIcon)
+        local ParsedIcon = Library:GetCustomIcon(Data.BigIcon, true)
         if ParsedIcon then
             BigIconLabel = New("ImageLabel", {
                 BackgroundTransparency = 1,
@@ -13621,7 +13666,7 @@ function Library:Notify(...)
 
     local IconLabel
     if Data.Icon and TitleContainer then
-        local ParsedIcon = Library:GetCustomIcon(Data.Icon)
+        local ParsedIcon = Library:GetCustomIcon(Data.Icon, true)
         if ParsedIcon then
             IconLabel = New("ImageLabel", {
                 BackgroundTransparency = 1,
@@ -14436,7 +14481,7 @@ function Library:CreateWindow(WindowInfo)
         })
 
         if WindowInfo.Icon then
-            local Icon = Library:GetCustomIcon(WindowInfo.Icon)
+            local Icon = Library:GetCustomIcon(WindowInfo.Icon, true)
             WindowIcon = New("ImageLabel", {
                 Size = WindowInfo.IconSize,
                 Parent = TitleHolder,
@@ -15208,7 +15253,7 @@ function Library:CreateWindow(WindowInfo)
         local TabLeft
         local TabRight
 
-        Icon = Library:GetCustomIcon(Icon)
+        Icon = Library:GetCustomIcon(Icon, true)
         do
             TabButton = New("TextButton", {
                 BackgroundColor3 = "OutlineColor",
@@ -15714,7 +15759,7 @@ function Library:CreateWindow(WindowInfo)
                 })
 
                 local ButtonIcon
-                local BoxIcon = Library:GetCustomIcon(IconName)
+                local BoxIcon = Library:GetCustomIcon(IconName, true)
                 if BoxIcon then
                     ButtonIcon = New("ImageLabel", {
                         ImageColor3 = BoxIcon.Custom and "WhiteColor" or "AccentColor",
@@ -16041,7 +16086,7 @@ function Library:CreateWindow(WindowInfo)
                     Parent = GroupboxTop,
                 })
 
-                local BoxIcon = Library:GetCustomIcon(Info.IconName)
+                local BoxIcon = Library:GetCustomIcon(Info.IconName, true)
                 if BoxIcon then
                     local GroupboxHeaderIcon = New("ImageLabel", {
                         AnchorPoint = Vector2.new(0, 0.5),
@@ -16651,7 +16696,7 @@ function Library:CreateWindow(WindowInfo)
 
         local TabContainer
 
-        Icon = if Icon == "key" then KeyIcon else Library:GetCustomIcon(Icon)
+        Icon = if Icon == "key" then KeyIcon else Library:GetCustomIcon(Icon, true)
         do
             TabButton = New("TextButton", {
                 BackgroundColor3 = "OutlineColor",
@@ -17137,7 +17182,7 @@ function Library:CreateWindow(WindowInfo)
         })
 
         if Info.Icon then
-            local ParsedIcon = Library:GetCustomIcon(Info.Icon)
+            local ParsedIcon = Library:GetCustomIcon(Info.Icon, true)
             if ParsedIcon then
                 local IconImg = New("ImageLabel", {
                     BackgroundTransparency = 1,
@@ -17946,7 +17991,7 @@ function Library:CreateLoading(LoadingInfo)
     })
 
     if LoadingInfo.Icon then
-        local Icon = Library:GetCustomIcon(LoadingInfo.Icon)
+        local Icon = Library:GetCustomIcon(LoadingInfo.Icon, true)
         local _WindowIcon = New("ImageLabel", {
             Size = LoadingInfo.IconSize,
             Parent = TitleHolder,
