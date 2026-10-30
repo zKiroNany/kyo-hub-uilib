@@ -43,6 +43,7 @@ local Tabs = {
 	-- IconColor is optional: each tab icon gets its own color with an automatic gradient
 	-- (without IconColor the icon follows the accent gradient)
 	Main = Window:AddTab({ Name = "Main", Icon = "user", IconColor = Color3.fromRGB(255, 140, 0) }),
+	Dashboard = Window:AddTab({ Name = "Dashboard", Icon = "layout-dashboard", IconColor = Color3.fromRGB(88, 166, 255) }),
 	Key = Window:AddKeyTab({ Name = "Key System", IconColor = Color3.fromRGB(255, 200, 60) }),
 	["UI Settings"] = Window:AddTab({ Name = "UI Settings", Icon = "settings", IconColor = Color3.fromRGB(143, 72, 207) }),
 }
@@ -821,6 +822,83 @@ MenuGroup:AddButton("Unload", function()
 end)
 
 Library.ToggleKeybind = Options.MenuKeybind -- Allows you to have a custom keybind for the menu
+
+-- Dashboard tab: images, stat cards, charts, progress bars and colored text.
+-- Colors you pass in are used exactly as given, the accent gradient never touches them.
+-- Image sources: a Roblox asset ("rbxassetid://123" or just 123), a PNG / JPG link (Discord links work, WebP is converted),
+-- "avatar:<UserId>" for a Roblox headshot, a lucide icon name, or a list of those tried in order.
+do
+	local Overview = Tabs.Dashboard:AddLeftGroupbox("📊 Overview")
+
+	Overview:AddImage("DashBanner", {
+		Image = { "https://cdn.discordapp.com/attachments/0/0/banner.png", "rbxassetid://0" }, -- first one that loads wins
+		Height = 90,
+		Rounded = true,
+		ScaleType = Enum.ScaleType.Crop,
+	})
+
+	Overview:AddStats("DashStats", {
+		Columns = 2,
+		Items = {
+			{ Key = "Coins", Title = "Coins", Value = 12500, Delta = 320, Subtitle = "today", Color = Color3.fromRGB(255, 200, 60), Icon = "coins" },
+			{ Key = "Kills", Title = "Kills", Value = 87, Delta = -4, Suffix = " mobs", Icon = "swords" },
+			{ Key = "Uptime", Title = "Uptime", Value = "02:41:10", Icon = "clock" },
+			{ Key = "Player", Title = "Account", Value = "Kyo", Icon = "avatar:1", IconRounded = true },
+		},
+	})
+
+	Overview:AddProgress("DashProgress", {
+		Text = "Materials",
+		Value = 64,
+		Max = 100,
+		Color = Color3.fromRGB(80, 220, 160),
+	})
+
+	-- Words in Text that match a key in Color get that color
+	Overview:AddColorText("DashText", {
+		Text = "Online 12 players, Offline 3",
+		Color = { Online = Color3.fromRGB(80, 220, 120), Offline = Color3.fromRGB(255, 90, 100), ["12"] = Color3.fromRGB(255, 200, 60) },
+	})
+
+	local Charts = Tabs.Dashboard:AddRightGroupbox("📈 Charts")
+
+	Charts:AddChart("DashLine", {
+		Type = "Area", -- "Line", "Area", "Bar" or "Donut"
+		Title = "Coins per minute",
+		Height = 150,
+		Data = { 4, 7, 6, 9, 14, 11, 16, 13 },
+		Color = Color3.fromRGB(88, 166, 255),
+	})
+
+	Charts:AddChart("DashMulti", {
+		Type = "Line",
+		Title = "CPU / Ping",
+		Legend = true,
+		Series = {
+			{ Name = "CPU", Color = Color3.fromRGB(255, 170, 70), Data = { 30, 42, 38, 55, 47 } },
+			{ Name = "Ping", Color = Color3.fromRGB(170, 120, 255), Data = { 60, 58, 70, 64, 61 } },
+		},
+	})
+
+	Charts:AddChart("DashDonut", {
+		Type = "Donut",
+		Height = 150,
+		Legend = true,
+		Series = {
+			{ Name = "Wood", Value = 40, Color = Color3.fromRGB(180, 120, 60) },
+			{ Name = "Stone", Value = 25, Color = Color3.fromRGB(150, 150, 160) },
+			{ Name = "Gold", Value = 10, Color = Color3.fromRGB(255, 200, 60) },
+		},
+	})
+
+	-- Live updates:
+	-- Options.DashLine:Push(15)                     -- adds a point (old ones leave after MaxPoints)
+	-- Options.DashMulti:Push("CPU", 52)             -- adds a point to a named series
+	-- Options.DashDonut:SetValues({ Wood = 50 })    -- changes slices by name
+	-- Options.DashStats:Set("Coins", 12800, 300)    -- value and delta of a card
+	-- Options.DashProgress:SetValue(80)
+	-- Options.DashText:SetText("Online 9 players", { Online = Color3.fromRGB(80, 220, 120) })
+end
 
 -- Addons:
 -- SaveManager (Allows you to have a configuration system)

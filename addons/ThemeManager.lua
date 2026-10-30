@@ -79,12 +79,7 @@ local ThemeManager = {
         --// Kyo: Sea Hub palette as the Default theme
         ["Default"] = {
             1,
-            { FontColor = "ffffff", MainColor = "331a47", AccentColor = "a4ff8e", BackgroundColor = "170f1c", OutlineColor = "4b316b", BackgroundImage = BackgroundBaseURL .. "default.jpg", AccentColor2 = "bc7df4", AccentGradient = true, FontFace = "ArimoBold", HeaderFont = "Bungee" },
-        },
-        --// Kyo: same colors as Default with the mint to purple wave
-        ["Mint Purple"] = {
-            1.5,
-            { FontColor = "ffffff", MainColor = "331a47", AccentColor = "a4ff8e", BackgroundColor = "170f1c", OutlineColor = "4b316b", BackgroundImage = BackgroundBaseURL .. "mint-purple.jpg", AccentColor2 = "bc7df4", AccentGradient = true, FontFace = "ArimoBold", HeaderFont = "GothamBlack" },
+            { FontColor = "ffffff", MainColor = "331a47", AccentColor = "a4ff8e", BackgroundColor = "170f1c", OutlineColor = "4b316b", BackgroundImage = BackgroundBaseURL .. "mint-purple.jpg", AccentColor2 = "bc7df4", AccentGradient = true, FontFace = "ArimoBold", HeaderFont = "Bungee" },
         },
         --// Kyo: community themes (colors, gradient, fonts and an original background image)
         ["Tokyo Ghoul"] = {

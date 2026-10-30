@@ -981,6 +981,73 @@ local Templates = {
         RectSize = Vector2.zero,
         ScaleType = Enum.ScaleType.Fit,
         Height = 200,
+        Rounded = false, --// Kyo: rounded corners on the picture itself
+        Circle = false, --// Kyo: round avatar style, the picture is kept square
+        Visible = true,
+    },
+    --// Kyo: Dashboard elements
+    ColorText = {
+        Text = "",
+        Color = nil,
+        Size = 14,
+        Bold = false,
+        Wrap = true,
+        Align = "Left",
+        Visible = true,
+    },
+    Stat = {
+        Title = "",
+        Value = 0,
+        Subtitle = nil,
+        Delta = nil,
+        DeltaColor = nil,
+        Color = nil,
+        Icon = nil,
+        IconColor = nil,
+        IconSize = 28,
+        IconRounded = false,
+        Prefix = "",
+        Suffix = "",
+        Decimals = nil,
+        Compact = false,
+        Animate = true,
+        Height = 56,
+        Visible = true,
+    },
+    Stats = {
+        Items = {},
+        Columns = nil,
+        Height = 56,
+        Defaults = {},
+        Visible = true,
+    },
+    Progress = {
+        Text = "",
+        Value = 0,
+        Max = 100,
+        Color = nil,
+        Display = "Percent",
+        Decimals = nil,
+        Compact = false,
+        UseGradient = false,
+        Visible = true,
+    },
+    Chart = {
+        Type = "Line",
+        Height = 150,
+        Title = nil,
+        Name = nil,
+        Color = nil,
+        Data = nil,
+        Series = nil,
+        Min = nil,
+        Max = nil,
+        Grid = true,
+        Legend = false,
+        Suffix = "",
+        Decimals = nil,
+        MaxPoints = 60,
+        CenterText = nil,
         Visible = true,
     },
     Video = {
@@ -2056,6 +2123,69 @@ function Library:UpdateGradients()
     for Object in GradientTargets do
         Library:SyncGradient(Object)
     end
+end
+
+--// Kyo: emoji aware text. Titles keep the theme font color, only the emojis go through the accent gradient
+--// Library:SplitEmoji(Text) returns the rich text for the normal layer (emojis hidden), the rich text for the emoji layer
+--// (everything else hidden) and whether the text has any emoji. Both layers have the same metrics, so they line up exactly
+local function IsEmojiCodepoint(Code: number): boolean
+    return (Code >= 0x1F000 and Code <= 0x1FAFF)
+        or (Code >= 0x2600 and Code <= 0x27BF)
+        or (Code >= 0x2300 and Code <= 0x23FF)
+        or (Code >= 0x2B00 and Code <= 0x2BFF)
+        or (Code >= 0x2190 and Code <= 0x21FF)
+        or (Code >= 0x25A0 and Code <= 0x25FF)
+        or (Code >= 0x2900 and Code <= 0x297F)
+        or Code == 0x203C or Code == 0x2049 or Code == 0x2122 or Code == 0x2139
+        or Code == 0x00A9 or Code == 0x00AE or Code == 0x3030 or Code == 0x303D
+        or Code == 0x3297 or Code == 0x3299
+end
+
+local function IsEmojiJoiner(Code: number): boolean
+    return Code == 0xFE0F or Code == 0xFE0E or Code == 0x200D or Code == 0x20E3 or (Code >= 0xE0020 and Code <= 0xE007F)
+end
+
+local function EscapeRichText(Text: string): string
+    return (Text:gsub("[&<>\"']", { ["&"] = "&amp;", ["<"] = "&lt;", [">"] = "&gt;", ["\""] = "&quot;", ["'"] = "&apos;" }))
+end
+Library.EscapeRichText = EscapeRichText
+
+function Library:SplitEmoji(Text: string): (string, string, boolean)
+    local Runs = {}
+    local LastWasEmoji = false
+    local HasEmoji = false
+
+    local Success = pcall(function()
+        for _, Code in utf8.codes(Text) do
+            local IsEmoji = IsEmojiCodepoint(Code) or (IsEmojiJoiner(Code) and LastWasEmoji)
+            local Char = utf8.char(Code)
+
+            local Last = Runs[#Runs]
+            if Last and Last.Emoji == IsEmoji then
+                Last.Text ..= Char
+            else
+                table.insert(Runs, { Emoji = IsEmoji, Text = Char })
+            end
+
+            HasEmoji = HasEmoji or IsEmoji
+            LastWasEmoji = IsEmoji
+        end
+    end)
+
+    if not Success or not HasEmoji then
+        return EscapeRichText(Text), "", false
+    end
+
+    local Body, Emojis = {}, {}
+    for _, Run in Runs do
+        local Escaped = EscapeRichText(Run.Text)
+        local Hidden = '<font transparency="1">' .. Escaped .. "</font>"
+
+        table.insert(Body, Run.Emoji and Hidden or Escaped)
+        table.insert(Emojis, Run.Emoji and Escaped or Hidden)
+    end
+
+    return table.concat(Body), table.concat(Emojis), true
 end
 
 function Library:SetGradient(Enabled: boolean?, Color2: Color3?)
@@ -7258,6 +7388,324 @@ do
     end
 end
 
+--// Kyo: Dashboard helpers (image sources, colored text, number formatting)
+--// Library:ResolveImage / Library:ApplyImageSource take any image source:
+--//   a Roblox asset ("rbxassetid://123", 123, "123"), a link (PNG / JPG, Discord links included), "avatar:<UserId>" for a
+--//   Roblox headshot, a lucide icon name, or a list of those that are tried in order until one loads
+local ImageTokens = setmetatable({}, { __mode = "k" })
+
+--// Discord serves WebP by default, which Roblox cannot show. Avatars, emojis and icons have a PNG twin, attachments go
+--// through the media proxy with format=png
+function Library:NormalizeImageUrl(Url: string): string
+    local Host, Path = Url:match("^https?://([^/]+)(/.*)$")
+    if not Host then
+        return Url
+    end
+
+    Host = Host:lower()
+    if Host ~= "cdn.discordapp.com" and Host ~= "media.discordapp.net" then
+        return Url
+    end
+
+    local Base, Query = Path:match("^([^?#]*)%??([^#]*)")
+    if not Base or not Base:lower():match("%.webp$") then
+        return Url
+    end
+
+    local Direct = false
+    for _, Folder in { "/avatars/", "/emojis/", "/icons/", "/banners/", "/splashes/", "/app-icons/", "/stickers/", "/role-icons/", "/guilds/" } do
+        if Base:sub(1, #Folder) == Folder then
+            Direct = true
+            break
+        end
+    end
+
+    if Direct then
+        local Png = Base:gsub("%.[Ww][Ee][Bb][Pp]$", ".png")
+        return "https://cdn.discordapp.com" .. Png .. (Query ~= "" and ("?" .. Query) or "")
+    end
+
+    local Cleaned = Query:gsub("format=%w+&?", ""):gsub("&$", "")
+    return "https://media.discordapp.net" .. Base .. "?" .. (Cleaned ~= "" and (Cleaned .. "&") or "") .. "format=png"
+end
+
+--// Returns { Image, RectOffset, RectSize, Icon } or nil, reason. It may yield (downloads)
+local function ResolveImageOne(Source: any): (any, string?)
+    if typeof(Source) == "number" or (typeof(Source) == "string" and tonumber(Source) ~= nil) then
+        return { Image = string.format("rbxassetid://%s", tostring(Source)) }
+    end
+
+    if typeof(Source) ~= "string" or Source == "" then
+        return nil, "empty image"
+    end
+
+    local Lower = Source:lower()
+    if Lower:match("^rbxassetid://") or Lower:match("^rbxasset://") or Lower:match("^rbxthumb://")
+        or Lower:match("^https?://www%.roblox%.com/asset") or Lower:match("^https?://assetdelivery%.roblox%.com") then
+        return { Image = Source }
+    end
+
+    local UserId = Lower:match("^avatar:(%d+)$") or Lower:match("^headshot:(%d+)$") or Lower:match("^user:(%d+)$")
+    if UserId then
+        return { Image = string.format("rbxthumb://type=AvatarHeadShot&id=%s&w=150&h=150", UserId) }
+    end
+
+    if Lower:match("^https?://") then
+        if not (getcustomasset and writefile and isfile) then
+            return nil, "your executor cannot load images from links (getcustomasset / writefile)"
+        end
+
+        local Url = Library:NormalizeImageUrl(Source)
+
+        local Clean = Url:gsub("[?#].*$", "")
+        local Segment = Clean:match("([^/]+)$") or "image.png"
+        Segment = Segment:gsub("[^%w%._%-]", "_")
+        if not Segment:match("%.%w+$") then
+            Segment = Segment .. ".png"
+        end
+
+        local Hash = 0
+        for Index = 1, #Url do
+            Hash = (Hash * 31 + string.byte(Url, Index)) % 4294967296
+        end
+
+        local FileName = string.format("%x_%s", Hash, Segment:sub(-60))
+
+        if CustomImageManagerAssets[FileName] == nil then
+            local Ok, Reason = CustomImageManager.AddAsset(FileName, 0, Url)
+            if not Ok then
+                return nil, tostring(Reason)
+            end
+        end
+
+        local AssetId = CustomImageManager.GetAsset(FileName)
+        if typeof(AssetId) ~= "string" or AssetId:match("^rbxassetid://0?$") then
+            return nil, "your executor could not load the downloaded file (getcustomasset)"
+        end
+
+        return { Image = AssetId }
+    end
+
+    local Icon = Library:GetCustomIcon(Source)
+    if Icon then
+        return { Image = Icon.Url, RectOffset = Icon.ImageRectOffset, RectSize = Icon.ImageRectSize, Icon = Icon }
+    end
+
+    return nil, "not a valid asset, link or icon name"
+end
+
+local function ResolveImageSource(Source: any): (any, string?)
+    if typeof(Source) == "table" then
+        local LastReason = "empty list"
+
+        for _, Item in Source do
+            local Result, Reason = ResolveImageOne(Item)
+            if Result then
+                return Result
+            end
+
+            LastReason = Reason or LastReason
+        end
+
+        return nil, LastReason
+    end
+
+    return ResolveImageOne(Source)
+end
+
+--// Calls Callback(Result or nil, Reason) from the resolving thread, the result is ready right away for assets and icons
+function Library:ResolveImage(Source: any, Callback: (any, string?) -> ())
+    task.spawn(function()
+        local Result, Reason = ResolveImageSource(Source)
+        Callback(Result, Reason)
+    end)
+end
+
+--// Puts the source on an ImageLabel / ImageButton. A newer call for the same label wins over an older one still downloading
+function Library:ApplyImageSource(ImageLabel: any, Source: any, OnFail: ((string) -> ())?)
+    local Token = (ImageTokens[ImageLabel] or 0) + 1
+    ImageTokens[ImageLabel] = Token
+
+    task.spawn(function()
+        local Result, Reason = ResolveImageSource(Source)
+
+        if ImageTokens[ImageLabel] ~= Token or not ImageLabel.Parent then
+            return
+        end
+
+        if not Result then
+            ImageLabel.Image = ""
+            if OnFail then
+                OnFail(Reason or "image failed")
+            end
+            return
+        end
+
+        if Result.Icon then
+            Library:ApplyLucideIcon(ImageLabel, Result.Icon)
+        else
+            ImageLabel.Image = Result.Image
+            ImageLabel.ImageRectOffset = Vector2.zero
+            ImageLabel.ImageRectSize = Vector2.zero
+        end
+    end)
+end
+
+local DashboardPalette = {
+    Color3.fromRGB(88, 166, 255),
+    Color3.fromRGB(255, 170, 70),
+    Color3.fromRGB(255, 100, 120),
+    Color3.fromRGB(170, 120, 255),
+    Color3.fromRGB(80, 220, 160),
+    Color3.fromRGB(255, 220, 90),
+}
+local PositiveColor = Color3.fromRGB(80, 220, 120)
+local NegativeColor = Color3.fromRGB(255, 90, 100)
+
+--// Color3, a scheme key ("AccentColor"), "#rrggbb" or { r, g, b }
+local function ToColor3(Value: any, Fallback: Color3?): Color3?
+    if typeof(Value) == "Color3" then
+        return Value
+    end
+
+    if typeof(Value) == "string" then
+        local FromScheme = Library.Scheme[Value]
+        if typeof(FromScheme) == "Color3" then
+            return FromScheme
+        end
+
+        local Hex = Value:gsub("^#", "")
+        if #Hex == 6 and Hex:match("^%x+$") then
+            return Color3.fromHex(Hex)
+        end
+    elseif typeof(Value) == "table" and #Value >= 3 then
+        return Color3.fromRGB(Value[1], Value[2], Value[3])
+    end
+
+    return Fallback
+end
+
+--// 12345.6 -> "12,346", Compact: 12345 -> "12.3K"
+function Library:FormatNumber(Value: any, Decimals: number?, Compact: boolean?): string
+    if typeof(Value) ~= "number" then
+        return tostring(Value)
+    end
+
+    local Suffix = ""
+    if Compact then
+        local Abs = math.abs(Value)
+        if Abs >= 1e9 then
+            Value, Suffix = Value / 1e9, "B"
+        elseif Abs >= 1e6 then
+            Value, Suffix = Value / 1e6, "M"
+        elseif Abs >= 1e3 then
+            Value, Suffix = Value / 1e3, "K"
+        end
+    end
+
+    local Places = Decimals or ((Value % 1 == 0) and 0 or (Suffix ~= "" and 1 or 2))
+    local Text = string.format("%." .. Places .. "f", Value)
+
+    local Sign, Int, Frac = Text:match("^(-?)(%d+)(%.?%d*)$")
+    if not Int then
+        return Text .. Suffix
+    end
+
+    local Grouped = Int:reverse():gsub("(%d%d%d)", "%1,")
+    Grouped = Grouped:reverse()
+    Grouped = Grouped:gsub("^,", "")
+
+    if Decimals == nil and Frac ~= "" then
+        Frac = Frac:gsub("0+$", "")
+        if Frac == "." then
+            Frac = ""
+        end
+    end
+
+    return Sign .. Grouped .. Frac .. Suffix
+end
+
+--// Rich text with colored words. Colors = { Word = Color3 }: every occurrence of Word gets its color. Text may also be a
+--// list of segments: { "plain ", { "green", Color3 }, { Text = "red", Color = Color3 } }
+function Library:ColorText(Text: any, Colors: any): string
+    if typeof(Text) == "table" then
+        local Parts = {}
+
+        for _, Segment in Text do
+            if typeof(Segment) == "string" then
+                table.insert(Parts, EscapeRichText(Segment))
+            elseif typeof(Segment) == "table" then
+                local Piece = EscapeRichText(tostring(Segment[1] or Segment.Text or ""))
+                local Color = ToColor3(Segment[2] or Segment.Color)
+
+                if Color then
+                    Piece = string.format('<font color="#%s">%s</font>', Color:ToHex(), Piece)
+                end
+
+                table.insert(Parts, Piece)
+            end
+        end
+
+        return table.concat(Parts)
+    end
+
+    Text = tostring(Text or "")
+
+    if typeof(Colors) ~= "table" then
+        local Whole = ToColor3(Colors)
+        if Whole then
+            return string.format('<font color="#%s">%s</font>', Whole:ToHex(), EscapeRichText(Text))
+        end
+
+        return EscapeRichText(Text)
+    end
+
+    local Ranges = {}
+    for Key, Value in Colors do
+        local Color = ToColor3(Value)
+
+        if typeof(Key) == "string" and Key ~= "" and Color then
+            local Start = 1
+
+            while true do
+                local First, Last = string.find(Text, Key, Start, true)
+                if not First then
+                    break
+                end
+
+                table.insert(Ranges, { First = First, Last = Last, Color = Color })
+                Start = Last + 1
+            end
+        end
+    end
+
+    --// Earlier first, the longer word wins when two start at the same place, overlaps are skipped
+    table.sort(Ranges, function(A, B)
+        if A.First ~= B.First then
+            return A.First < B.First
+        end
+
+        return (A.Last - A.First) > (B.Last - B.First)
+    end)
+
+    local Out, Cursor = {}, 1
+    for _, Range in Ranges do
+        if Range.First >= Cursor then
+            if Range.First > Cursor then
+                table.insert(Out, EscapeRichText(Text:sub(Cursor, Range.First - 1)))
+            end
+
+            table.insert(Out, string.format('<font color="#%s">%s</font>', Range.Color:ToHex(), EscapeRichText(Text:sub(Range.First, Range.Last))))
+            Cursor = Range.Last + 1
+        end
+    end
+
+    table.insert(Out, EscapeRichText(Text:sub(Cursor)))
+
+    return table.concat(Out)
+end
+
+
 local BaseGroupbox = {}
 do
     local Funcs = {}
@@ -10958,15 +11406,21 @@ do
             Parent = Box,
         }
 
-        local Icon = Library:GetCustomIcon(Image.Image)
-        assert(Icon, "Image must be a valid Roblox asset or a valid URL or a valid lucide icon.")
-
-        ImageProperties.Image = Icon.Url
-        ImageProperties.ImageRectOffset = Icon.ImageRectOffset
-        ImageProperties.ImageRectSize = Icon.ImageRectSize
-
+        --// Kyo: the image may be a Roblox asset / id, a PNG or JPG link (Discord links included), "avatar:<UserId>", a
+        --// lucide icon, or a list of those tried in order. Links download in the background
         local ImageLabel = New("ImageLabel", ImageProperties)
-        Library:ApplyLucideIcon(ImageLabel, Icon)
+        if Info.Circle then
+            New("UIAspectRatioConstraint", { AspectRatio = 1, Parent = ImageLabel })
+            ImageLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+            ImageLabel.Position = UDim2.fromScale(0.5, 0.5)
+            New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = ImageLabel })
+        elseif Info.Rounded then
+            New("UICorner", { CornerRadius = UDim.new(0, Library.CornerRadius / 2), Parent = ImageLabel })
+        end
+
+        Library:ApplyImageSource(ImageLabel, Image.Image, function(Reason)
+            Library:Notify(string.format("Image failed: %s", Reason), 5)
+        end)
 
         function Image:SetHeight(Height: number)
             assert(Height > 0, "Height must be greater than 0.")
@@ -10976,17 +11430,12 @@ do
             Groupbox:Resize()
         end
 
-        function Image:SetImage(NewImage: string)
-            assert(typeof(NewImage) == "string", "Image must be a string.")
+        function Image:SetImage(NewImage: any)
+            Image.Image = NewImage
 
-            local Icon = Library:GetCustomIcon(NewImage)
-            assert(Icon, "Image must be a valid Roblox asset or a valid URL or a valid lucide icon.")
-
-            Image.RectOffset = Icon.ImageRectOffset
-            Image.RectSize = Icon.ImageRectSize
-
-            Library:ApplyLucideIcon(ImageLabel, Icon)
-            Image.Image = Icon.Url
+            Library:ApplyImageSource(ImageLabel, NewImage, function(Reason)
+                Library:Notify(string.format("Image failed: %s", Reason), 5)
+            end)
         end
 
         function Image:SetColor(Color: Color3)
@@ -11300,6 +11749,1200 @@ do
         end
 
         return Passthrough
+    end
+
+    --// Kyo: Dashboard elements. Colors you pass in are used as they are, the accent gradient never touches them
+    local function FinishElement(Groupbox, Element, Holder, Idx)
+        Element.Holder = Holder
+        table.insert(Groupbox.Elements, Element)
+
+        if Idx then
+            Options[Idx] = Element
+        end
+
+        function Element:SetVisible(Visible: boolean)
+            Element.Visible = Visible
+            Holder.Visible = Visible
+            Groupbox:Resize()
+        end
+
+        function Element:Destroy()
+            Element.Destroyed = true
+
+            for _, Connection in Element.Connections do
+                Connection:Disconnect()
+            end
+
+            if Holder then
+                Holder:Destroy()
+            end
+
+            local ElemIdx = table.find(Groupbox.Elements, Element)
+            if ElemIdx then
+                table.remove(Groupbox.Elements, ElemIdx)
+            end
+
+            Groupbox:Resize()
+
+            if Idx then
+                Options[Idx] = nil
+            end
+        end
+    end
+
+    local function MakeBox(Parent, Size)
+        local Box = New("Frame", {
+            BackgroundColor3 = "MainColor",
+            Size = Size,
+            Parent = Parent,
+        })
+        table.insert(Library.Corners, New("UICorner", {
+            CornerRadius = UDim.new(0, Library.CornerRadius / 2),
+            Parent = Box,
+        }))
+        New("UIStroke", {
+            Color = "OutlineColor",
+            Parent = Box,
+        })
+
+        return Box
+    end
+
+    --// Text with colored words: Text = "Online 12 players", Color = { Online = Color3, ["12"] = Color3 }
+    function Funcs:AddColorText(Idx, Info)
+        if self.Destroyed then return nil end
+
+        Info = Library:Validate(Info, Templates.ColorText)
+
+        local Groupbox = self
+        local Element = {
+            Connections = {},
+            Destroyed = false,
+
+            Text = Info.Text,
+            Color = Info.Color,
+            Visible = Info.Visible,
+            Type = "ColorText",
+        }
+
+        local TextLabel = New("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, Info.Size + 4),
+            RichText = true,
+            Text = "",
+            TextSize = Info.Size,
+            TextWrapped = Info.Wrap,
+            TextXAlignment = ({ Left = Enum.TextXAlignment.Left, Center = Enum.TextXAlignment.Center, Right = Enum.TextXAlignment.Right })[Info.Align] or Enum.TextXAlignment.Left,
+            TextYAlignment = Enum.TextYAlignment.Top,
+            Visible = Element.Visible,
+            Parent = Groupbox.Container,
+        })
+        if Info.Bold then
+            Library:SetBold(TextLabel, true)
+        end
+
+        local function PlainText()
+            if typeof(Element.Text) == "table" then
+                local Parts = {}
+                for _, Segment in Element.Text do
+                    table.insert(Parts, typeof(Segment) == "string" and Segment or tostring(Segment[1] or Segment.Text or ""))
+                end
+                return table.concat(Parts)
+            end
+
+            return tostring(Element.Text or "")
+        end
+
+        function Element:Display()
+            TextLabel.Text = Library:ColorText(Element.Text, Element.Color)
+
+            if Info.Wrap then
+                local Width = TextLabel.AbsoluteSize.X / Library.DPIScale
+                if Width > 0 then
+                    local _, Y = Library:GetTextBounds(PlainText(), TextLabel.FontFace, TextLabel.TextSize, Width)
+                    TextLabel.Size = UDim2.new(1, 0, 0, Y + 4)
+                end
+            end
+
+            Groupbox:Resize()
+        end
+
+        function Element:SetText(Text, Color)
+            Element.Text = Text
+            if Color ~= nil then
+                Element.Color = Color
+            end
+
+            Element:Display()
+        end
+
+        --// SetColor(Map) replaces the colors, SetColor("Word", Color3) changes or adds one word
+        function Element:SetColor(Colors, Color)
+            if typeof(Colors) == "string" and Color ~= nil and typeof(Element.Color) == "table" then
+                Element.Color[Colors] = Color
+            else
+                Element.Color = Colors
+            end
+
+            Element:Display()
+        end
+
+        if Info.Wrap then
+            local Last = TextLabel.AbsoluteSize
+            table.insert(Element.Connections, TextLabel:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+                if TextLabel.AbsoluteSize.X == Last.X then
+                    return
+                end
+
+                Last = TextLabel.AbsoluteSize
+                Element:Display()
+            end))
+        end
+
+        Element.TextLabel = TextLabel
+        FinishElement(Groupbox, Element, TextLabel, Idx)
+        Element:Display()
+
+        return Element
+    end
+
+    --// One stat card: icon, title, big value, subtitle and a colored delta
+    local function BuildStatCard(Parent, Info, Resize)
+        local Card = {
+            Connections = {},
+            Title = Info.Title,
+            Value = Info.Value,
+            Subtitle = Info.Subtitle,
+            Delta = Info.Delta,
+            Color = Info.Color,
+            Type = "Stat",
+        }
+
+        local Box = MakeBox(Parent, UDim2.fromScale(1, 1))
+        New("UIPadding", {
+            PaddingBottom = UDim.new(0, 6),
+            PaddingLeft = UDim.new(0, 9),
+            PaddingRight = UDim.new(0, 9),
+            PaddingTop = UDim.new(0, 6),
+            Parent = Box,
+        })
+
+        local HasIcon = Info.Icon ~= nil and Info.Icon ~= ""
+        local IconImage = nil
+        if HasIcon then
+            IconImage = New("ImageLabel", {
+                AnchorPoint = Vector2.new(0, 0.5),
+                BackgroundTransparency = 1,
+                ImageColor3 = Info.IconColor or Color3.new(1, 1, 1),
+                Position = UDim2.fromScale(0, 0.5),
+                ScaleType = Enum.ScaleType.Fit,
+                Size = UDim2.fromOffset(Info.IconSize, Info.IconSize),
+                Parent = Box,
+            })
+            if Info.IconRounded then
+                New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = IconImage })
+            end
+            Library:ApplyImageSource(IconImage, Info.Icon)
+        end
+
+        local Texts = New("Frame", {
+            BackgroundTransparency = 1,
+            Position = UDim2.fromOffset(HasIcon and (Info.IconSize + 9) or 0, 0),
+            Size = UDim2.new(1, -(HasIcon and (Info.IconSize + 9) or 0), 1, 0),
+            Parent = Box,
+        })
+        New("UIListLayout", {
+            HorizontalAlignment = Enum.HorizontalAlignment.Left,
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            Padding = UDim.new(0, 0),
+            Parent = Texts,
+        })
+
+        local TitleLabel = New("TextLabel", {
+            BackgroundTransparency = 1,
+            LayoutOrder = 1,
+            Size = UDim2.new(1, 0, 0, 14),
+            Text = Card.Title or "",
+            TextSize = 12,
+            TextTransparency = 0.35,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = Texts,
+        })
+
+        local ValueLabel = New("TextLabel", {
+            BackgroundTransparency = 1,
+            LayoutOrder = 2,
+            Size = UDim2.new(1, 0, 0, 24),
+            Text = "",
+            TextColor3 = ToColor3(Card.Color) or "FontColor",
+            TextSize = 20,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = Texts,
+        })
+        Library:SetBold(ValueLabel, true)
+
+        local SubLabel = New("TextLabel", {
+            BackgroundTransparency = 1,
+            LayoutOrder = 3,
+            Size = UDim2.new(1, 0, 0, 14),
+            Text = "",
+            TextSize = 12,
+            TextTransparency = 0.35,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Visible = false,
+            Parent = Texts,
+        })
+
+        local function FormatValue(Value)
+            local Text = typeof(Value) == "number" and Library:FormatNumber(Value, Info.Decimals, Info.Compact) or tostring(Value or "")
+            return (Info.Prefix or "") .. Text .. (Info.Suffix or "")
+        end
+
+        local function RefreshSub()
+            local Delta = Card.Delta
+            local Rich = ""
+
+            if Delta ~= nil and Delta ~= "" then
+                local Color = ToColor3(Info.DeltaColor)
+                if not Color then
+                    local Number = typeof(Delta) == "number" and Delta or tonumber((tostring(Delta):gsub("[%%,%s]", "")))
+                    Color = (Number and Number < 0 or tostring(Delta):sub(1, 1) == "-") and NegativeColor or PositiveColor
+                end
+
+                local DeltaText = typeof(Delta) == "number" and ((Delta > 0 and "+" or "") .. Library:FormatNumber(Delta)) or tostring(Delta)
+                Rich = string.format('<font color="#%s">%s</font>', Color:ToHex(), EscapeRichText(DeltaText))
+            end
+
+            if Card.Subtitle and Card.Subtitle ~= "" then
+                Rich = Rich .. (Rich ~= "" and "  " or "") .. EscapeRichText(Card.Subtitle)
+            end
+
+            SubLabel.Text = Rich
+            SubLabel.Visible = Rich ~= ""
+        end
+
+        local Shown = nil
+        local Token = 0
+
+        local function SetShown(Value)
+            Shown = Value
+            ValueLabel.Text = FormatValue(Value)
+        end
+
+        function Card:SetValue(Value)
+            Card.Value = Value
+            Token += 1
+
+            if Info.Animate and typeof(Value) == "number" and typeof(Shown) == "number" and Shown ~= Value then
+                local My = Token
+                local From = Shown
+                local Started = os.clock()
+
+                task.spawn(function()
+                    while My == Token and os.clock() - Started < 0.4 and ValueLabel.Parent do
+                        local Alpha = (os.clock() - Started) / 0.4
+                        Alpha = 1 - (1 - Alpha) ^ 3
+
+                        local Step = From + (Value - From) * Alpha
+                        ValueLabel.Text = FormatValue(Info.Decimals and Step or math.round(Step))
+                        task.wait()
+                    end
+
+                    if My == Token then
+                        SetShown(Value)
+                    end
+                end)
+            else
+                SetShown(Value)
+            end
+        end
+
+        function Card:SetTitle(Title)
+            Card.Title = Title
+            TitleLabel.Text = Title or ""
+        end
+
+        function Card:SetSubtitle(Subtitle)
+            Card.Subtitle = Subtitle
+            RefreshSub()
+            Resize()
+        end
+
+        function Card:SetDelta(Delta, Color)
+            Card.Delta = Delta
+            if Color ~= nil then
+                Info.DeltaColor = Color
+            end
+            RefreshSub()
+            Resize()
+        end
+
+        function Card:SetColor(Color)
+            Card.Color = Color
+            ValueLabel.TextColor3 = ToColor3(Color) or Library.Scheme.FontColor
+            if Library.Registry[ValueLabel] then
+                Library.Registry[ValueLabel].TextColor3 = (ToColor3(Color) == nil) and "FontColor" or nil
+            end
+        end
+
+        function Card:SetIcon(Source)
+            if IconImage then
+                Library:ApplyImageSource(IconImage, Source)
+            end
+        end
+
+        if Card.Color ~= nil then
+            Card:SetColor(Card.Color)
+        end
+
+        SetShown(Card.Value)
+        RefreshSub()
+        Card.Frame = Box
+
+        return Card
+    end
+
+    --// A row (or a grid) of stat cards: Items = { { Title, Value, Subtitle, Delta, Color, Icon, Key }, ... }
+    function Funcs:AddStats(Idx, Info)
+        if self.Destroyed then return nil end
+
+        Info = Library:Validate(Info, Templates.Stats)
+
+        local Groupbox = self
+        local Items = Info.Items or {}
+        local Columns = math.max(1, math.min(Info.Columns or #Items, math.max(#Items, 1)))
+        local Rows = math.max(1, math.ceil(#Items / Columns))
+        local Gap = 6
+
+        local Element = {
+            Connections = {},
+            Destroyed = false,
+
+            Cards = {},
+            ByKey = {},
+            Visible = Info.Visible,
+            Type = "Stats",
+        }
+
+        local Holder = New("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, Rows * Info.Height + (Rows - 1) * Gap),
+            Visible = Element.Visible,
+            Parent = Groupbox.Container,
+        })
+        New("UIGridLayout", {
+            CellPadding = UDim2.fromOffset(Gap, Gap),
+            CellSize = UDim2.new(1 / Columns, -math.ceil(Gap * (Columns - 1) / Columns), 0, Info.Height),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Parent = Holder,
+        })
+
+        for Index, Item in Items do
+            local Merged = table.clone(Item)
+            for Key, Value in Info.Defaults or {} do
+                if Merged[Key] == nil then
+                    Merged[Key] = Value
+                end
+            end
+            Merged = Library:Validate(Merged, Templates.Stat)
+
+            local Slot = New("Frame", {
+                BackgroundTransparency = 1,
+                LayoutOrder = Index,
+                Parent = Holder,
+            })
+
+            local Card = BuildStatCard(Slot, Merged, function()
+                Groupbox:Resize()
+            end)
+
+            table.insert(Element.Cards, Card)
+            if Item.Key ~= nil then
+                Element.ByKey[Item.Key] = Card
+            end
+        end
+
+        function Element:Get(Key)
+            return Element.ByKey[Key] or Element.Cards[Key]
+        end
+
+        --// Set("Key", Value) or Set("Key", Value, Delta)
+        function Element:Set(Key, Value, Delta)
+            local Card = Element:Get(Key)
+            if not Card then
+                return
+            end
+
+            Card:SetValue(Value)
+            if Delta ~= nil then
+                Card:SetDelta(Delta)
+            end
+        end
+
+        FinishElement(Groupbox, Element, Holder, Idx)
+        Groupbox:Resize()
+
+        return Element
+    end
+
+    function Funcs:AddStat(Idx, Info)
+        Info = Info or {}
+
+        local Single = table.clone(Info)
+        local Stats = Funcs.AddStats(self, Idx, {
+            Items = { Single },
+            Columns = 1,
+            Height = Info.Height or 56,
+            Visible = Info.Visible ~= false,
+        })
+
+        if not Stats then
+            return nil
+        end
+
+        --// The single card answers directly: Stat:SetValue(...)
+        local Card = Stats.Cards[1]
+        for Key, Value in Card do
+            if Stats[Key] == nil then
+                Stats[Key] = Value
+            end
+        end
+
+        return Stats
+    end
+
+    --// Progress bar with a title and a value on the right
+    function Funcs:AddProgress(Idx, Info)
+        if self.Destroyed then return nil end
+
+        Info = Library:Validate(Info, Templates.Progress)
+
+        local Groupbox = self
+        local Element = {
+            Connections = {},
+            Destroyed = false,
+
+            Text = Info.Text,
+            Value = Info.Value,
+            Max = Info.Max,
+            Color = Info.Color,
+            Visible = Info.Visible,
+            Type = "Progress",
+        }
+
+        local Holder = New("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 32),
+            Visible = Element.Visible,
+            Parent = Groupbox.Container,
+        })
+
+        local TitleLabel = New("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0.6, 0, 0, 16),
+            Text = Element.Text,
+            TextSize = 14,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = Holder,
+        })
+
+        local ValueLabel = New("TextLabel", {
+            AnchorPoint = Vector2.new(1, 0),
+            BackgroundTransparency = 1,
+            Position = UDim2.fromScale(1, 0),
+            Size = UDim2.new(0.4, 0, 0, 16),
+            Text = "",
+            TextSize = 14,
+            TextTransparency = 0.25,
+            TextXAlignment = Enum.TextXAlignment.Right,
+            Parent = Holder,
+        })
+
+        local Track = New("Frame", {
+            AnchorPoint = Vector2.new(0, 1),
+            BackgroundColor3 = "OutlineColor",
+            Position = UDim2.fromScale(0, 1),
+            Size = UDim2.new(1, 0, 0, 8),
+            Parent = Holder,
+        })
+        table.insert(Library.Corners, New("UICorner", { CornerRadius = UDim.new(0, 4), Parent = Track }))
+
+        local Fill = New("Frame", {
+            BackgroundColor3 = ToColor3(Element.Color) or "AccentColor",
+            Size = UDim2.fromScale(0, 1),
+            Parent = Track,
+        })
+        table.insert(Library.Corners, New("UICorner", { CornerRadius = UDim.new(0, 4), Parent = Fill }))
+
+        --// The fill only follows the accent gradient when asked to
+        if Info.UseGradient and not ToColor3(Element.Color) then
+            Library:AddGradient(Fill, "BackgroundColor3", 0)
+        end
+
+        function Element:Update(Animate)
+            local Max = math.max(Element.Max, 1e-9)
+            local Ratio = math.clamp(Element.Value / Max, 0, 1)
+
+            if Animate == false then
+                Fill.Size = UDim2.fromScale(Ratio, 1)
+            else
+                TweenService:Create(Fill, Library.TweenInfo, { Size = UDim2.fromScale(Ratio, 1) }):Play()
+            end
+
+            if Info.Display == "Value" then
+                ValueLabel.Text = string.format("%s / %s", Library:FormatNumber(Element.Value, Info.Decimals, Info.Compact), Library:FormatNumber(Element.Max, Info.Decimals, Info.Compact))
+            elseif Info.Display == "None" then
+                ValueLabel.Text = ""
+            else
+                ValueLabel.Text = string.format("%d%%", math.floor(Ratio * 100 + 0.5))
+            end
+        end
+
+        function Element:SetValue(Value, Max)
+            Element.Value = Value
+            if Max ~= nil then
+                Element.Max = Max
+            end
+            Element:Update()
+        end
+
+        function Element:SetMax(Max)
+            Element.Max = Max
+            Element:Update()
+        end
+
+        function Element:SetText(Text)
+            Element.Text = Text
+            TitleLabel.Text = Text
+        end
+
+        function Element:SetColor(Color)
+            Element.Color = Color
+            local Resolved = ToColor3(Color)
+
+            if Library.Registry[Fill] then
+                Library.Registry[Fill].BackgroundColor3 = Resolved == nil and "AccentColor" or nil
+            end
+            Fill.BackgroundColor3 = Resolved or Library.Scheme.AccentColor
+        end
+
+        FinishElement(Groupbox, Element, Holder, Idx)
+        Element:Update(false)
+        Groupbox:Resize()
+
+        return Element
+    end
+
+    --// Chart: Type = "Line" | "Area" | "Bar" | "Donut"
+    --// Data = { 1, 2, 3 } for one series, or Series = { { Name = "CPU", Color = Color3, Data = { ... } }, ... }
+    --// Donut: Series = { { Name = "Wood", Value = 40, Color = Color3 }, ... }
+    function Funcs:AddChart(Idx, Info)
+        if self.Destroyed then return nil end
+
+        Info = Library:Validate(Info, Templates.Chart)
+
+        local Groupbox = self
+        local Element = {
+            Connections = {},
+            Destroyed = false,
+
+            Type = "Chart",
+            ChartType = Info.Type,
+            Visible = Info.Visible,
+            Series = {},
+        }
+
+        local Height = Info.Height
+        local Holder = New("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, Height),
+            Visible = Element.Visible,
+            Parent = Groupbox.Container,
+        })
+        local Box = MakeBox(Holder, UDim2.fromScale(1, 1))
+
+        local TopInset = Info.Title and 22 or 8
+        local BottomInset = 8
+
+        local TitleLabel = New("TextLabel", {
+            BackgroundTransparency = 1,
+            Position = UDim2.fromOffset(9, 4),
+            Size = UDim2.new(0.5, -9, 0, 16),
+            Text = Info.Title or "",
+            TextSize = 13,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Visible = Info.Title ~= nil,
+            Parent = Box,
+        })
+        Library:SetBold(TitleLabel, true)
+
+        local Readout = New("TextLabel", {
+            AnchorPoint = Vector2.new(1, 0),
+            BackgroundTransparency = 1,
+            Position = UDim2.new(1, -9, 0, 4),
+            Size = UDim2.new(0.5, -9, 0, 16),
+            Text = "",
+            TextSize = 12,
+            TextXAlignment = Enum.TextXAlignment.Right,
+            Parent = Box,
+        })
+
+        local LeftInset = (Info.Type == "Donut") and 9 or 38
+
+        local Plot = New("Frame", {
+            BackgroundTransparency = 1,
+            ClipsDescendants = true,
+            Position = UDim2.fromOffset(LeftInset, TopInset),
+            Size = UDim2.new(1, -(LeftInset + 9), 1, -(TopInset + BottomInset + (Info.Legend and 16 or 0))),
+            Parent = Box,
+        })
+
+        local Canvas = New("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.fromScale(1, 1),
+            Parent = Plot,
+        })
+
+        local AxisLabels = New("Frame", {
+            BackgroundTransparency = 1,
+            Position = UDim2.fromOffset(4, TopInset),
+            Size = UDim2.new(0, LeftInset - 6, 1, -(TopInset + BottomInset + (Info.Legend and 16 or 0))),
+            Visible = Info.Type ~= "Donut" and Info.Grid,
+            Parent = Box,
+        })
+
+        local LegendHolder = New("Frame", {
+            AnchorPoint = Vector2.new(0, 1),
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0, 9, 1, -4),
+            Size = UDim2.new(1, -18, 0, 14),
+            Visible = Info.Legend,
+            Parent = Box,
+        })
+        New("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            Padding = UDim.new(0, 10),
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            Parent = LegendHolder,
+        })
+
+        local Marker = New("Frame", {
+            BackgroundColor3 = "OutlineColor",
+            BorderSizePixel = 0,
+            Size = UDim2.new(0, 1, 1, 0),
+            Visible = false,
+            ZIndex = 5,
+            Parent = Plot,
+        })
+
+        --// Series from the info table
+        local function BuildSeries(Source)
+            local List = {}
+
+            for Index, Item in Source do
+                local Color = ToColor3(Item.Color) or (Index == 1 and Library.Scheme.AccentColor) or DashboardPalette[(Index - 1) % #DashboardPalette + 1]
+
+                table.insert(List, {
+                    Name = Item.Name or ("Series " .. Index),
+                    Color = Color,
+                    Data = table.clone(Item.Data or {}),
+                    Value = Item.Value,
+                })
+            end
+
+            return List
+        end
+
+        if Info.Series then
+            Element.Series = BuildSeries(Info.Series)
+        elseif Info.Data then
+            Element.Series = BuildSeries({ { Name = Info.Name or "Value", Color = Info.Color, Data = Info.Data } })
+        else
+            Element.Series = BuildSeries({ { Name = Info.Name or "Value", Color = Info.Color, Data = {} } })
+        end
+
+        local Dirty = false
+
+        local function FormatAxis(Value)
+            return Library:FormatNumber(Value, Info.Decimals, true) .. (Info.Suffix or "")
+        end
+
+        local function Range()
+            local Min, Max = math.huge, -math.huge
+
+            for _, Series in Element.Series do
+                for _, Value in Series.Data do
+                    Min = math.min(Min, Value)
+                    Max = math.max(Max, Value)
+                end
+            end
+
+            if Min == math.huge then
+                Min, Max = 0, 1
+            end
+
+            local Type = Element.ChartType
+            if Type == "Bar" or Type == "Area" then
+                Min = math.min(Min, 0)
+            end
+
+            if Info.Min ~= nil then
+                Min = Info.Min
+            end
+            if Info.Max ~= nil then
+                Max = Info.Max
+            end
+
+            if Max - Min < 1e-9 then
+                Max = Min + 1
+            elseif Info.Min == nil and Info.Max == nil and Type == "Line" then
+                local Pad = (Max - Min) * 0.1
+                Min -= Pad
+                Max += Pad
+            end
+
+            return Min, Max
+        end
+
+        local function Segment(Parent, X1, Y1, X2, Y2, Color, Thickness)
+            local DX, DY = X2 - X1, Y2 - Y1
+            local Length = math.sqrt(DX * DX + DY * DY)
+
+            local Part = New("Frame", {
+                AnchorPoint = Vector2.new(0.5, 0.5),
+                BackgroundColor3 = Color,
+                Position = UDim2.fromOffset((X1 + X2) / 2, (Y1 + Y2) / 2),
+                Rotation = math.deg(math.atan2(DY, DX)),
+                Size = UDim2.fromOffset(Length + 0.5, Thickness),
+                Parent = Parent,
+            })
+
+            return Part
+        end
+
+        local function Render()
+            Dirty = false
+            if Element.Destroyed then
+                return
+            end
+
+            Canvas:ClearAllChildren()
+            AxisLabels:ClearAllChildren()
+
+            for _, Child in LegendHolder:GetChildren() do
+                if Child:IsA("Frame") then
+                    Child:Destroy()
+                end
+            end
+
+            local Size = Plot.AbsoluteSize / Library.DPIScale
+            local Width, PlotHeight = Size.X, Size.Y
+            if Width < 4 or PlotHeight < 4 then
+                return
+            end
+
+            local Type = Element.ChartType
+
+            --// Legend
+            if Info.Legend then
+                for Index, Series in Element.Series do
+                    local Entry = New("Frame", {
+                        AutomaticSize = Enum.AutomaticSize.X,
+                        BackgroundTransparency = 1,
+                        LayoutOrder = Index,
+                        Size = UDim2.fromOffset(0, 14),
+                        Parent = LegendHolder,
+                    })
+                    New("UIListLayout", {
+                        FillDirection = Enum.FillDirection.Horizontal,
+                        Padding = UDim.new(0, 4),
+                        VerticalAlignment = Enum.VerticalAlignment.Center,
+                        Parent = Entry,
+                    })
+
+                    local Dot = New("Frame", {
+                        BackgroundColor3 = Series.Color,
+                        LayoutOrder = 1,
+                        Size = UDim2.fromOffset(8, 8),
+                        Parent = Entry,
+                    })
+                    New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = Dot })
+
+                    New("TextLabel", {
+                        AutomaticSize = Enum.AutomaticSize.X,
+                        BackgroundTransparency = 1,
+                        LayoutOrder = 2,
+                        Size = UDim2.fromOffset(0, 14),
+                        Text = Series.Name,
+                        TextSize = 12,
+                        TextTransparency = 0.25,
+                        Parent = Entry,
+                    })
+                end
+            end
+
+            if Type == "Donut" then
+                local Total = 0
+                for _, Series in Element.Series do
+                    Total += math.max(Series.Value or 0, 0)
+                end
+
+                local Diameter = math.min(Width, PlotHeight)
+                local Radius = Diameter / 2
+                local Thickness = math.max(8, Radius * 0.28)
+                local Center = Vector2.new(Width / 2, PlotHeight / 2)
+                local Steps = 120
+
+                local Boundaries = {}
+                local Running = 0
+                for _, Series in Element.Series do
+                    Running += math.max(Series.Value or 0, 0)
+                    table.insert(Boundaries, Total > 0 and Running / Total or 0)
+                end
+
+                for Step = 0, Steps - 1 do
+                    local Fraction = (Step + 0.5) / Steps
+                    local Color = Library.Scheme.OutlineColor
+
+                    if Total > 0 then
+                        for Index, Boundary in Boundaries do
+                            if Fraction <= Boundary then
+                                Color = Element.Series[Index].Color
+                                break
+                            end
+                        end
+                    end
+
+                    local Angle = Fraction * math.pi * 2 - math.pi / 2
+                    local Mid = Radius - Thickness / 2
+                    local Position = Center + Vector2.new(math.cos(Angle), math.sin(Angle)) * Mid
+                    local ArcLength = (math.pi * 2 * Mid / Steps) + 1.5
+
+                    New("Frame", {
+                        AnchorPoint = Vector2.new(0.5, 0.5),
+                        BackgroundColor3 = Color,
+                        Position = UDim2.fromOffset(Position.X, Position.Y),
+                        Rotation = math.deg(Angle) + 90,
+                        Size = UDim2.fromOffset(ArcLength, Thickness),
+                        Parent = Canvas,
+                    })
+                end
+
+                New("TextLabel", {
+                    AnchorPoint = Vector2.new(0.5, 0.5),
+                    BackgroundTransparency = 1,
+                    Position = UDim2.fromOffset(Center.X, Center.Y),
+                    Size = UDim2.fromOffset(Radius * 1.2, 24),
+                    Text = Info.CenterText or Library:FormatNumber(Total, Info.Decimals, true),
+                    TextSize = 18,
+                    TextTruncate = Enum.TextTruncate.AtEnd,
+                    Parent = Canvas,
+                })
+
+                return
+            end
+
+            local Min, Max = Range()
+            local function ToY(Value)
+                return PlotHeight - (Value - Min) / (Max - Min) * PlotHeight
+            end
+
+            --// Grid and axis labels
+            if Info.Grid then
+                for Line = 0, 2 do
+                    local Fraction = Line / 2
+                    local Y = PlotHeight - Fraction * PlotHeight
+
+                    New("Frame", {
+                        BackgroundColor3 = "OutlineColor",
+                        BackgroundTransparency = 0.4,
+                        Position = UDim2.fromOffset(0, math.clamp(Y - 0.5, 0, PlotHeight - 1)),
+                        Size = UDim2.new(1, 0, 0, 1),
+                        Parent = Canvas,
+                    })
+
+                    New("TextLabel", {
+                        AnchorPoint = Vector2.new(0, 0.5),
+                        BackgroundTransparency = 1,
+                        Position = UDim2.fromOffset(0, Y),
+                        Size = UDim2.new(1, 0, 0, 12),
+                        Text = FormatAxis(Min + (Max - Min) * Fraction),
+                        TextSize = 11,
+                        TextTransparency = 0.4,
+                        TextXAlignment = Enum.TextXAlignment.Right,
+                        Parent = AxisLabels,
+                    })
+                end
+            end
+
+            local Count = 0
+            for _, Series in Element.Series do
+                Count = math.max(Count, #Series.Data)
+            end
+            if Count == 0 then
+                return
+            end
+
+            if Type == "Bar" then
+                local Slot = Width / Count
+                local Group = math.max(Slot * 0.7, 2)
+                local BarWidth = Group / #Element.Series
+                local Base = ToY(math.max(Min, 0))
+
+                for Index = 1, Count do
+                    for SeriesIndex, Series in Element.Series do
+                        local Value = Series.Data[Index]
+                        if Value then
+                            local Top = ToY(Value)
+                            local BarTop, BarBottom = math.min(Top, Base), math.max(Top, Base)
+
+                            New("Frame", {
+                                BackgroundColor3 = Series.Color,
+                                Position = UDim2.fromOffset((Index - 1) * Slot + (Slot - Group) / 2 + (SeriesIndex - 1) * BarWidth, BarTop),
+                                Size = UDim2.fromOffset(math.max(BarWidth - 1, 1), math.max(BarBottom - BarTop, 1)),
+                                Parent = Canvas,
+                            })
+                        end
+                    end
+                end
+
+                return
+            end
+
+            --// Line and Area
+            for _, Series in Element.Series do
+                local Data = Series.Data
+                local Points = {}
+                local Steps = math.max(#Data - 1, 1)
+
+                for Index, Value in Data do
+                    table.insert(Points, Vector2.new((Index - 1) / Steps * Width, ToY(Value)))
+                end
+
+                if #Points == 1 then
+                    Points = { Vector2.new(0, Points[1].Y), Vector2.new(Width, Points[1].Y) }
+                end
+
+                if Type == "Area" then
+                    local Strip = math.max(2, Width / 140)
+                    local Base = ToY(math.max(Min, 0))
+
+                    for PointIndex = 1, #Points - 1 do
+                        local A, B = Points[PointIndex], Points[PointIndex + 1]
+                        local Columns = math.max(1, math.ceil((B.X - A.X) / Strip))
+
+                        for Column = 0, Columns - 1 do
+                            local T = (Column + 0.5) / Columns
+                            local X = A.X + (B.X - A.X) * (Column / Columns)
+                            local Y = A.Y + (B.Y - A.Y) * T
+                            local Top, Bottom = math.min(Y, Base), math.max(Y, Base)
+
+                            New("Frame", {
+                                BackgroundColor3 = Series.Color,
+                                BackgroundTransparency = 0.8,
+                                Position = UDim2.fromOffset(X, Top),
+                                Size = UDim2.fromOffset((B.X - A.X) / Columns + 0.5, math.max(Bottom - Top, 1)),
+                                Parent = Canvas,
+                            })
+                        end
+                    end
+                end
+
+                for PointIndex = 1, #Points - 1 do
+                    local A, B = Points[PointIndex], Points[PointIndex + 1]
+                    Segment(Canvas, A.X, A.Y, B.X, B.Y, Series.Color, 2)
+                end
+
+                if #Data <= 30 then
+                    for _, Point in Points do
+                        local Dot = New("Frame", {
+                            AnchorPoint = Vector2.new(0.5, 0.5),
+                            BackgroundColor3 = Series.Color,
+                            Position = UDim2.fromOffset(Point.X, Point.Y),
+                            Size = UDim2.fromOffset(6, 6),
+                            Parent = Canvas,
+                        })
+                        New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = Dot })
+                    end
+                end
+            end
+        end
+
+        local function Queue()
+            if Dirty then
+                return
+            end
+
+            Dirty = true
+            task.defer(Render)
+        end
+
+        function Element:SetType(Type)
+            Element.ChartType = Type
+            Queue()
+        end
+
+        --// SetData({ 1, 2, 3 }) for one series, SetData({ { Name, Color, Data }, ... }) for several, SetData("CPU", { ... }) for one
+        function Element:SetData(First, Second)
+            if typeof(First) == "string" then
+                for _, Series in Element.Series do
+                    if Series.Name == First then
+                        Series.Data = table.clone(Second or {})
+                    end
+                end
+            elseif typeof(First) == "table" and typeof(First[1]) == "table" then
+                Element.Series = BuildSeries(First)
+            else
+                Element.Series[1] = Element.Series[1] or BuildSeries({ { Data = {} } })[1]
+                Element.Series[1].Data = table.clone(First or {})
+            end
+
+            Queue()
+        end
+
+        --// Donut: SetValues({ Wood = 40, Stone = 25 }) keeps the colors of the series with the same name
+        function Element:SetValues(Values)
+            for _, Series in Element.Series do
+                if Values[Series.Name] ~= nil then
+                    Series.Value = Values[Series.Name]
+                end
+            end
+
+            Queue()
+        end
+
+        --// Push(Value) for the first series, Push("CPU", Value) for a named one. Old points leave after MaxPoints
+        function Element:Push(First, Second)
+            local Series = Element.Series[1]
+            local Value = First
+
+            if Second ~= nil then
+                Value = Second
+                for _, Item in Element.Series do
+                    if Item.Name == First then
+                        Series = Item
+                        break
+                    end
+                end
+            end
+
+            if not Series or typeof(Value) ~= "number" then
+                return
+            end
+
+            table.insert(Series.Data, Value)
+            while #Series.Data > Info.MaxPoints do
+                table.remove(Series.Data, 1)
+            end
+
+            Queue()
+        end
+
+        function Element:Clear()
+            for _, Series in Element.Series do
+                Series.Data = {}
+                Series.Value = 0
+            end
+
+            Queue()
+        end
+
+        function Element:SetRange(Min, Max)
+            Info.Min, Info.Max = Min, Max
+            Queue()
+        end
+
+        function Element:SetTitle(Title)
+            Info.Title = Title
+            TitleLabel.Text = Title or ""
+        end
+
+        function Element:SetColor(Name, Color)
+            for _, Series in Element.Series do
+                if Series.Name == Name then
+                    Series.Color = ToColor3(Color) or Series.Color
+                end
+            end
+
+            Queue()
+        end
+
+        --// Readout of the point under the cursor
+        local function ShowAt(Position)
+            if Element.ChartType == "Donut" then
+                return
+            end
+
+            local Width = Plot.AbsoluteSize.X
+            if Width <= 0 then
+                return
+            end
+
+            local Count = 0
+            for _, Series in Element.Series do
+                Count = math.max(Count, #Series.Data)
+            end
+            if Count == 0 then
+                return
+            end
+
+            local Alpha = math.clamp((Position.X - Plot.AbsolutePosition.X) / Width, 0, 1)
+            local Index
+            if Element.ChartType == "Bar" then
+                Index = math.clamp(math.floor(Alpha * Count) + 1, 1, Count)
+                Marker.Position = UDim2.new((Index - 0.5) / Count, 0, 0, 0)
+            else
+                Index = math.clamp(math.round(Alpha * math.max(Count - 1, 1)) + 1, 1, Count)
+                Marker.Position = UDim2.new(Count > 1 and (Index - 1) / (Count - 1) or 0, 0, 0, 0)
+            end
+
+            local Parts = {}
+            for _, Series in Element.Series do
+                local Value = Series.Data[Index]
+                if Value ~= nil then
+                    table.insert(Parts, string.format('<font color="#%s">%s</font> %s', Series.Color:ToHex(), EscapeRichText(Series.Name), FormatAxis(Value)))
+                end
+            end
+
+            Marker.Visible = true
+            Readout.Text = table.concat(Parts, "   ")
+        end
+
+        --// A global listener: the plot is covered by its own drawing, which would hide the mouse from the plot itself
+        local Hovering = false
+        local function Inside(Position)
+            local Origin, Size = Plot.AbsolutePosition, Plot.AbsoluteSize
+            return Position.X >= Origin.X and Position.X <= Origin.X + Size.X and Position.Y >= Origin.Y and Position.Y <= Origin.Y + Size.Y
+        end
+
+        table.insert(Element.Connections, Library:GiveSignal(UserInputService.InputChanged:Connect(function(Input)
+            if Input.UserInputType ~= Enum.UserInputType.MouseMovement and Input.UserInputType ~= Enum.UserInputType.Touch then
+                return
+            end
+
+            local Position = Vector2.new(Mouse.X, Mouse.Y)
+
+            if Holder.Visible and Plot.AbsoluteSize.X > 0 and Inside(Position) then
+                Hovering = true
+                ShowAt(Position)
+            elseif Hovering then
+                Hovering = false
+                Marker.Visible = false
+                Readout.Text = ""
+            end
+        end)))
+        table.insert(Element.Connections, Plot:GetPropertyChangedSignal("AbsoluteSize"):Connect(Queue))
+
+        FinishElement(Groupbox, Element, Holder, Idx)
+        Queue()
+        Groupbox:Resize()
+
+        return Element
     end
 
     function Funcs:AddDependencyBox()
@@ -14429,23 +16072,43 @@ function Library:CreateWindow(WindowInfo)
                     Parent = TextsFrame,
                 })
 
+                --// Kyo: the title uses the theme font color, only the emojis in it get the accent gradient
+                local TitleBody, TitleEmoji, TitleHasEmoji = Library:SplitEmoji(Info.Name)
+
                 GroupboxLabel = New("TextLabel", {
                     AutomaticSize = Enum.AutomaticSize.Y,
                     BackgroundTransparency = 1,
                     Size = UDim2.fromScale(1, 0),
-                    Text = Info.Name,
+                    RichText = true,
+                    Text = TitleBody,
                     FontFace = "HeaderFont",
-                    TextColor3 = "AccentColor",
+                    TextColor3 = "FontColor",
                     TextSize = 14,
                     TextWrapped = true,
                     TextXAlignment = Enum.TextXAlignment.Left,
                     Parent = TextsFrame,
                 })
-                Library:AddGradient(GroupboxLabel, "TextColor3", 0)
                 New("UIPadding", {
                     PaddingBottom = UDim.new(0, 1),
                     Parent = GroupboxLabel,
                 })
+
+                if TitleHasEmoji then
+                    local EmojiLayer = New("TextLabel", {
+                        BackgroundTransparency = 1,
+                        Size = UDim2.fromScale(1, 1),
+                        RichText = true,
+                        Text = TitleEmoji,
+                        FontFace = "HeaderFont",
+                        TextColor3 = "WhiteColor",
+                        TextSize = 14,
+                        TextWrapped = true,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        TextYAlignment = Enum.TextYAlignment.Top,
+                        Parent = GroupboxLabel,
+                    })
+                    Library:AddGradient(EmojiLayer, "TextColor3", 0, "WhiteColor")
+                end
 
                 GroupboxDescription = New("TextLabel", {
                     AutomaticSize = Enum.AutomaticSize.Y,
